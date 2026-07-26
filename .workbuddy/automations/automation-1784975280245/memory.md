@@ -1,0 +1,15 @@
+# Automation Execution Memory
+- **Task ID:** automation-1784975280245
+- **Task Name:** Fix_Scraper_And_Run_Real
+- **Date executed:** 2026-07-25
+- **Action summary:** Refactored `batch_scrape.js` to implement an incremental capture mechanism during scrolling (4-5 iterations, 1.5s delay, and Map-based deduplication per scroll). Executed the combined JS scraper and updated the Python risk assessment script `batch_assess.py` to overwrite `data/scores.txt`. Outputted 9 accounts' data and risk reports.
+- **Results:**
+  - @sunny31059: Score=9 (low)
+  - @sino11680908: Score=27 (low)
+  - @shutiaoniang: Score=30 (medium)
+  - @jiajia2475: Score=30 (medium)
+  - @chichi_maddy: Score=30 (medium)
+  - @VulpesM: Score=30 (medium)
+  - @wuuuuuucy: Score=30 (medium)
+  - @5277888MCHS: Score=30 (medium)
+  - @urlittlecuteboy: Score=50 (medium)

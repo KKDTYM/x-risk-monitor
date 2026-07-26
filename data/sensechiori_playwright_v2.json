@@ -1,0 +1,60 @@
+{
+  "username": "sensechiori",
+  "scraped_at": "2026-07-26T09:35:07.364Z",
+  "source": "playwright_retweet_markers",
+  "total_count": 5,
+  "original_count": 5,
+  "retweet_count": 0,
+  "tweets": [
+    {
+      "id": "2031688839115456615",
+      "text": "像这样子可以玩滑滑梯嘛",
+      "datetime": "",
+      "isRetweet": false,
+      "retweetAuthor": "sensechiori",
+      "hasMedia": true,
+      "isSensitive": false,
+      "source": "playwright_individual"
+    },
+    {
+      "id": "1947152346343198890",
+      "text": "ᶘ ᵒᴥᵒᶅ 想找个老公 要求不高 疼我就行",
+      "datetime": "",
+      "isRetweet": false,
+      "retweetAuthor": "sensechiori",
+      "hasMedia": true,
+      "isSensitive": false,
+      "source": "playwright_individual"
+    },
+    {
+      "id": "1946649611533189187",
+      "text": "需要人疼",
+      "datetime": "",
+      "isRetweet": false,
+      "retweetAuthor": "sensechiori",
+      "hasMedia": true,
+      "isSensitive": false,
+      "source": "playwright_individual"
+    },
+    {
+      "id": "1939373313119432870",
+      "text": "想要找经验丰富的S一起玩",
+      "datetime": "",
+      "isRetweet": false,
+      "retweetAuthor": "sensechiori",
+      "hasMedia": true,
+      "isSensitive": false,
+      "source": "playwright_individual"
+    },
+    {
+      "id": "1900476248129753437",
+      "text": "这周找S玩 qq2676167083",
+      "datetime": "",
+      "isRetweet": false,
+      "retweetAuthor": "sensechiori",
+      "hasMedia": true,
+      "isSensitive": false,
+      "source": "playwright_individual"
+    }
+  ]
+}

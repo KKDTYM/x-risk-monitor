@@ -1,0 +1,30 @@
+# 大文件和调试目录
+__pycache__/
+*.pyc
+*.pyo
+browser_profile/
+conny_debug*/
+maibao_debug/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.b64
+*.html
+
+# node_modules
+node_modules/
+
+# 配置文件（包含敏感信息）
+cookies.json
+conny_cookies.json
+data/*_tweets_*.json
+data/*_risk_*.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# workbuddy
+.workbuddy/memory/*.md

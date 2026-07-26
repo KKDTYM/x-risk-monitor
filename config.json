@@ -1,0 +1,49 @@
+{
+    "accounts": [
+        {
+            "username": "KkdTym",
+            "display_name": "KkdTym",
+            "qq": "",
+            "email": ""
+        },
+        {
+            "username": "kaixintangtang",
+            "display_name": "kaixintangtang",
+            "qq": "1468266264",
+            "email": "1468266264@qq.com"
+        },
+        {
+            "username": "dangao0709",
+            "display_name": "dangao0709",
+            "qq": "2570842685",
+            "email": "1525807496@qq.com"
+        }
+    ],
+    "proxy": {
+        "enabled": false,
+        "socks5_host": "127.0.0.1",
+        "socks5_port": 3129,
+        "upstream": "172.16.10.14:7891"
+    },
+    "output": {
+        "base_dir": "data",
+        "raw_data_dir": "data/account_data",
+        "report_dir": "data/reports"
+    },
+    "risk_thresholds": {
+        "high_score": 60,
+        "medium_score": 30
+    },
+    "scraper": {
+        "tweets_count": 15,
+        "timeout_ms": 30000,
+        "retry_count": 1
+    },
+    "smtp_settings": {
+        "enabled": true,
+        "sender_email": "3416841744@qq.com",
+        "smtp_server": "smtp.qq.com",
+        "smtp_port": 465,
+        "smtp_password": "pjklqqezeezkdagh"
+    }
+}

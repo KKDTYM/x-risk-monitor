@@ -1,0 +1,13 @@
+{
+  "username": "ai_yu75199",
+  "scraped_at": "2026-07-25T00:51:06.779813",
+  "profile": null,
+  "recent_tweets": [],
+  "tweets_note": "",
+  "account_status": {
+    "is_protected": false,
+    "is_suspended": false,
+    "is_frozen": false
+  },
+  "error": "404 Client Error: Not Found for url: https://api.fxtwitter.com/ai_yu75199"
+}
