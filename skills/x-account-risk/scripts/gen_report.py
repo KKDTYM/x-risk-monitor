@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""X 账号风险 HTML 报告生成器 v4.4（11 维度）。
+"""X 账号风险 HTML 报告生成器 v4.6（11 维度）。
 Usage: python gen_report_v4.py <risk_json> [output.html]
 """
 import html
@@ -208,6 +208,23 @@ def gen_report(data):
         )
     findings_html = '<div class="findings">' + "".join(findings) + "</div>"
 
+    # ---- 待人工复核区 ----
+    review_items = []
+    p = dims.get("prohibited", {})
+    for t in p.get("tier1_details", []):
+        review_items.append(f"<li><strong>Tier 1 严重违规：</strong>{esc(t)}</li>")
+    s = dims.get("survival", {})
+    for mh in s.get("minor_hits", []):
+        review_items.append(f"<li><strong>幼态/未成年误判风险：</strong>{esc(mh)}——建议人工确认是否存在未成年性化内容</li>")
+    for dh in s.get("dox_hits", []):
+        review_items.append(f"<li><strong>疑似开盒/隐私泄露：</strong>{esc(dh)}——涉他人真实信息</li>")
+    for im in meta.get("impersonators") or []:
+        review_items.append(f"<li><strong>仿冒号：</strong>@{esc(im)}——注意甄别，防粉丝被骗</li>")
+    review_html = ""
+    if review_items:
+        review_html = ('<div class="review-box"><h3>⚠️ 待人工复核清单</h3><ul>'
+                       + "".join(review_items) + "</ul></div>")
+
     html_doc = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -250,6 +267,9 @@ def gen_report(data):
   .legend {{ padding:20px 30px; background:#fffde7; border-top:1px solid #fff9c4; font-size:13px; line-height:2; }}
   .findings {{ padding:24px 30px; background:#fdf2f2; border-top:1px solid #f5c6c6; font-size:13.5px; line-height:1.9; color:#5a3a3a; }}
   .findings p {{ margin:8px 0; }}
+  .review-box {{ padding:20px 30px; background:#fff8e1; border-top:1px solid #f5d78a; font-size:13.5px; line-height:1.9; }}
+  .review-box h3 {{ color:#b9770e; margin-bottom:8px; font-size:16px; }}
+  .review-box li {{ margin:4px 0; }}
   .tweets-wrap {{ padding:0 30px 30px; }}
   .tweets-table {{ width:100%; border-collapse:collapse; font-size:12.5px; }}
   .tweets-table th {{ background:#f5f5f5; padding:9px; text-align:left; border-bottom:2px solid #ddd; }}
@@ -263,7 +283,7 @@ def gen_report(data):
   <div class="header">
     <h1>X 账号风险评估报告</h1>
     <p>{esc(handle)} · {esc(name)}</p>
-    <p>评估日期：{esc((meta.get('evaluated_at') or '')[:10])} ｜ 引擎：v4.4（11 维度） ｜ 数据源：{esc(meta.get('data_source') or '')}</p>
+    <p>评估日期：{esc((meta.get('evaluated_at') or '')[:10])} ｜ 引擎：v4.6（11 维度） ｜ 数据源：{esc(meta.get('data_source') or '')}</p>
   </div>
     <div class="score-section">
     <div class="score-circle"><div class="score-inner">
@@ -288,6 +308,7 @@ def gen_report(data):
     </div>
   </div>
   {findings_html}
+  {review_html}
   <div class="dimensions">
     <h2 class="section-title">📋 11 维度详细评分（含扣分标准）</h2>
     {cards}
@@ -304,7 +325,7 @@ def gen_report(data):
     <strong>💡 评分规则：</strong>总分 = 各维度风险分之和（分数越高风险越大），归一化到 0-100；负分 = 信任加分。
   </div>
   <div class="footer">
-    X 账号风险监控系统 v4.4（11 维度）｜ 数据来源：登录态 DOM 时间线 + X embed + fxTwitter ｜ 仅用于合规研究
+    X 账号风险监控系统 v4.6（11 维度）｜ 数据来源：登录态 DOM 时间线 + X embed + fxTwitter ｜ 仅用于合规研究
   </div>
 </div>
 </body>

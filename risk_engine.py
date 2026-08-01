@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""X 账号风险评分引擎 v4.5（11 维度，风险分逻辑：分数越高风险越大）。
+"""X 账号风险评分引擎 v4.6（11 维度，风险分逻辑：分数越高风险越大）。
 
 维度总分上限 = 142（15+15+12+10+10+8+8+12+25+15+12），归一化到 0-100。
 等级：>=60 高风险（红） / 30-59 中风险（黄） / <30 低风险（绿）。
@@ -28,7 +28,7 @@ SOFT_ADULT = [
 # Tier 1 严重违规（非合意 / 未成年 / 性暴力 / 血腥剥刮）——仅保留无歧义严重词
 TIER1_KEYWORDS = [
     "幼女", "幼男", "恋童", "恋童癖", "儿童色情", "炼铜",
-    "迷奸", "诱奸", "轮奸", "非自愿", "性暴力",
+    "迷奸", "诱奸", "非自愿", "性暴力", "人兽", "兽交", "犬交",
     "分尸", "剥皮", "血腥", "gore", "snuff", "凌迟",
 ]
 # “未成年/未成年人”仅在性语境共现时算 Tier 1（排除调侃/日常语境误报）
@@ -46,7 +46,7 @@ TIER2_KEYWORDS = STRONG_ADULT + [
 # ---- 第 10 维度：账号存续风险（封禁史与平台打击面）----
 # 封禁/重生历史信号：账号曾因违规被平台处理，重启后再次违规 = 再封高优先级
 SURVIVAL_BAN_KEYWORDS = [
-    "复活版", "重生号", "复活", "重生", "被冻", "冻结",
+    "复活版", "重生号", "重生", "被冻", "冻结",
     "重开", "復活", "旧号", "被盗号", "号被盗",
 ]
 # 性交易/招嫖 + 商业变现信号（A 级=露骨明示，必须扣分）
@@ -54,7 +54,7 @@ SURVIVAL_SW_KEYWORDS = [
     "接线下", "可约", "全国可飞", "全国可✈", "莞式", "报价",
     "课表", "口令", "好友位", "私信解锁", "涩涩基地", "包夜", "线上一对一",
     "领课表", "接单", "约炮", "门槛", "付费", "有偿", "包月", "订阅", "打赏",
-    "图包", "淘宝", "店铺", "发售", "卖淫", "嫖", "下单",
+    "图包", "淘宝", "店铺", "发售", "卖淫", "下单",
 ]
 # 隐晦引流词（B 级=可辩解，不扣分，仅提示）
 SURVIVAL_IMPLICIT_KEYWORDS = [
@@ -62,6 +62,10 @@ SURVIVAL_IMPLICIT_KEYWORDS = [
 ]
 # 隐私侵害信号：泄露他人姓名/住址等（开盒）
 SURVIVAL_DOX_KEYWORDS = ["地址是", "家庭住址", "住址"]
+# 幼态/未成年误判风险：账号自述被平台识别为未成年（幼态人设+性话题=平台误杀高发区）
+SURVIVAL_MINOR_MISJUDGE_KEYWORDS = [
+    "识别成未成年", "识别未成年", "被识别未成年", "像未成年", "幼年时期", "幼态", "未成年警告",
+]
 
 # ---- 第 11 维度：真人感 / 营销号形态 ----
 # 生活化关键词：真人博主会有日常/个人叙事
@@ -171,6 +175,8 @@ class RiskEngine:
                 "强奸" in text.lower() and _hit(text, TIER1_RAPE_CONTEXT)
             ) or (
                 ("下药" in text.lower() or "迷药" in text.lower()) and _hit(text, TIER1_DRUG_CONTEXT)
+            ) or (
+                "轮奸" in text.lower() and _hit(text, TIER1_RAPE_CONTEXT)
             )
             if has_minor and not is_tier1:
                 # 含“未成年”但无性语境：降级为 Tier 2 边界，报告中提示人工复核
@@ -210,6 +216,8 @@ class RiskEngine:
         _sw_hits = []
         _dox_hits = []
         _impl_hits = []
+        _minor_hits = []
+        _impersonator_count = len(extra_data.get("impersonators") or [])
         for txt in _all_texts:
             for kw in SURVIVAL_BAN_KEYWORDS:
                 if kw in txt and ("无" + kw) not in txt and ("不" + kw) not in txt and kw not in _ban_hits:
@@ -228,7 +236,16 @@ class RiskEngine:
             for kw in SURVIVAL_DOX_KEYWORDS:
                 if kw in txt and ("无" + kw) not in txt and ("不" + kw) not in txt and kw not in _dox_hits:
                     _dox_hits.append(kw)
+            for kw in SURVIVAL_MINOR_MISJUDGE_KEYWORDS:
+                if kw in txt and kw not in _minor_hits:
+                    _minor_hits.append(kw)
         _survival = min(8, len(_ban_hits) * 4) + min(7, len(_sw_hits) * 3) + (5 if _dox_hits else 0)
+        if _minor_hits:
+            _survival += 4
+        if _impersonator_count >= 6:
+            _survival += 4
+        elif _impersonator_count >= 3:
+            _survival += 2
         _survival = min(15, _survival)
         _surv_issues = []
         if _ban_hits:
@@ -239,6 +256,10 @@ class RiskEngine:
             _surv_issues.append(f"检测到隐晦引流词（未扣分，仅提示）：{'、'.join(_impl_hits[:6])}")
         if _dox_hits:
             _surv_issues.append(f"检测到疑似隐私泄露/开盒信号：{'、'.join(_dox_hits[:4])}（涉他人真实信息，+5）")
+        if _minor_hits:
+            _surv_issues.append(f"检测到幼态/未成年误判信号：{'、'.join(_minor_hits[:4])}（幼态人设+性话题=平台误杀高发区，需人工复核，+4）")
+        if _impersonator_count:
+            _surv_issues.append(f"发现 {_impersonator_count} 个仿冒/近似账号（{'、'.join((extra_data.get('impersonators') or [])[:6])}），仿冒生态侵蚀粉丝，+{2 if _impersonator_count >= 3 else 4 if _impersonator_count >= 6 else 0}")
         if not _surv_issues:
             _surv_issues.append("未检测到封禁史/性交易/隐私侵害信号")
 
@@ -433,7 +454,7 @@ class RiskEngine:
             "risk_score": min(25, d9), "max_risk": 25,
             "issues": d9_issues,
             "tier1_violations": tier1_count,
-            "tier1_details": [t.get("text", "")[:80] for t in tier1_ids],
+            "tier1_details": [(("（搬运）" if t.get("is_retweet") else "") + (t.get("text", "")[:80])) for t in tier1_ids],
             "tier2_count": tier2_count,
             "tier2_details": [t.get("text", "")[:100] for t in tier2_ids],
         }
@@ -444,6 +465,8 @@ class RiskEngine:
             "ban_hits": _ban_hits[:8],
             "sw_hits": _sw_hits[:10],
             "dox_hits": _dox_hits[:4],
+            "minor_hits": _minor_hits[:5],
+            "impersonator_count": _impersonator_count,
         }
         dims["human"] = {
             "label": "真人感/营销号形态",
