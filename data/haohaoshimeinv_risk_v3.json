@@ -1,0 +1,111 @@
+{
+  "score": 15,
+  "level": "LOW",
+  "dimensions": {
+    "acc_compliance": {
+      "risk_score": 10,
+      "max_risk": 15,
+      "issues": [
+        "未加入 ACC 计划"
+      ]
+    },
+    "tag_compliance": {
+      "risk_score": 0,
+      "max_risk": 15,
+      "issues": []
+    },
+    "auto_reply_compliance": {
+      "risk_score": 0,
+      "max_risk": 12,
+      "issues": []
+    },
+    "ip_compliance": {
+      "risk_score": 0,
+      "max_risk": 10,
+      "issues": []
+    },
+    "shadowban": {
+      "risk_score": 0,
+      "max_risk": 10,
+      "issues": []
+    },
+    "follow_ratio": {
+      "risk_score": 7,
+      "max_risk": 8,
+      "issues": [
+        "关注/粉丝比=inf"
+      ]
+    },
+    "premium": {
+      "risk_score": 0,
+      "max_risk": 8,
+      "issues": []
+    },
+    "content_diversity": {
+      "risk_score": 0,
+      "max_risk": 12,
+      "issues": []
+    },
+    "forbidden_content": {
+      "risk_score": 0,
+      "max_risk": 25,
+      "issues": []
+    }
+  },
+  "details": [
+    "acc_compliance: 10/15 - 未加入 ACC 计划",
+    "follow_ratio: 7/8 - 关注/粉丝比=inf"
+  ],
+  "recommendation": "低风险：账号状态良好",
+  "meta": {
+    "handle": "@haohaoshimeinv",
+    "name": "Hao hao",
+    "tweets_analyzed": 4,
+    "followers": 0,
+    "following": 0,
+    "evaluated_at": "2026-07-29T15:41:38.390346",
+    "data_source": "Playwright DOM scrape (Cookie-authorized, real @haohaoshimeinv timeline)"
+  },
+  "tweets": [
+    {
+      "text": "很多人都想知道我这个样子在男寝是怎么呆着的，室友难道不会看上我吗？咳咳•ᴗ•💧其实完全不用担心这个问题，我和室友从开学到现在说的话没有超过十句，，，，平时他们就一直一直打游戏也不会发生啥交流的，所以更不可能出现室友半夜爬我床的事情😅上了大学之后现实里的社交真的挺少 ，，，，\n#男娘",
+      "is_retweet": false,
+      "is_sensitive": false,
+      "possibly_sensitive": false,
+      "likes": 108,
+      "retweets": 44,
+      "url": null,
+      "raw": "很多人都想知道我这个样子在男寝是怎么呆着的，室友难道不会看上我吗？咳咳•ᴗ•💧其实完全不用担心这个问题，我和室友从开学到现在说的话没有超过十句，，，，平时他们就一直一直打游戏也不会发生啥交流的，所以更不可能出现室友半夜爬我床的事情😅上了大学之后现实里的社交真的挺少 ，，，，\n#男娘"
+    },
+    {
+      "text": "三年了\n也是从一个帅小伙变成了一个小女孩",
+      "is_retweet": false,
+      "is_sensitive": false,
+      "possibly_sensitive": false,
+      "likes": 7,
+      "retweets": 130,
+      "url": null,
+      "raw": "三年了\n也是从一个帅小伙变成了一个小女孩"
+    },
+    {
+      "text": "沙漠里的小男娘\n#ts #男娘",
+      "is_retweet": false,
+      "is_sensitive": false,
+      "possibly_sensitive": false,
+      "likes": 7,
+      "retweets": 3,
+      "url": null,
+      "raw": "沙漠里的小男娘\n#ts #男娘"
+    },
+    {
+      "text": "感觉像一个饱经风霜的老 ts🫢\n#男娘 #ts",
+      "is_retweet": false,
+      "is_sensitive": false,
+      "possibly_sensitive": false,
+      "likes": 21,
+      "retweets": 10,
+      "url": null,
+      "raw": "感觉像一个饱经风霜的老 ts🫢\n#男娘 #ts"
+    }
+  ]
+}
