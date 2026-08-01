@@ -101,7 +101,17 @@ python scripts/assess_x_account.py <Handle> [workspace_dir]
 - 可选搜索证据：`data/<handle>_search_evidence.json`（见 Step 4），提供 `search_autocomplete_absent` / `user_search_absent` / `from_search_empty` / `from_search_works` / `impersonators` 字段。
 - 输出：`data/<handle>_risk_v3.json`（score/level/dimensions 9 维度/meta/tweets）。
 
-### Step 3 生成 HTML 报告
+### Step 3 先出大白话简报，再出正式报告
+
+**强制顺序**：评分完成后，先输出一段白话简报（3-5 句），再输出正式 HTML 报告。
+
+**白话简报格式**：
+- **一句话定性**：高风险/中风险/低风险 + 一句话总结（如"@handle 是个低风险男娘号，内容健康，就是粉丝比有点怪"）
+- **主要扣分项**：列出扣最多的 1-3 项（白话描述，如"没加 ACC 计划，2026 年要补上"）
+- **亮点**：有哪些做得好的（如"推文标记全对，没有重复回复"）
+- **建议**：1-2 条 actionable 建议（如"关注一下生活化内容占比，别全是涩涩图"）
+
+**然后**再生成正式 HTML 报告（`gen_report.py`），包含：总分圆环 + 维度卡片 + 推文样本表 + 待人工复核清单。
 
 ```bash
 python scripts/gen_report.py <workspace>/data/<handle>_risk_v3.json [output.html]
