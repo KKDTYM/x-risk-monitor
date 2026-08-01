@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""X 账号风险评分引擎 v4.6（11 维度，风险分逻辑：分数越高风险越大）。
+"""X 账号风险评分引擎 v4.7（11 维度，风险分逻辑：分数越高风险越大）。
 
 维度总分上限 = 142（15+15+12+10+10+8+8+12+25+15+12），归一化到 0-100。
 等级：>=60 高风险（红） / 30-59 中风险（黄） / <30 低风险（绿）。
 数据源：Playwright 登录态 DOM 时间线 + X syndication embed + fxTwitter。
+
+v4.7 变更：
+- 置信度机制：无数据维度不再假装安全，输出置信度与分数区间
+- Tier2 数量分级：3-9 条 +10 / 10-49 条 +15 / 50+ 条 +20
+- marking 平台标记率参照：平台整体标记率 <10% 时折算 50%（平台尺度）
+- 变现信号权重下调（校准：存活样本中露骨变现组与无变现组存续年限无差异）
+- 多语言词库（英文关键词）
 """
 import re
 from datetime import datetime
@@ -18,6 +25,8 @@ STRONG_ADULT = [
     "涩图", "色图", "r18", "r-18", "nsfw", "18+", "18禁", "onlyfans",
     "fansly", "制服诱惑", "内射", "无套", "群交", "援交", "约炮",
     "一夜情", "招嫖", "下海", "露出", "卖淫", "嫖",
+    "sex", "nsfw", "porn", "hentai", "daddy", "kink", "bdsm", "spank",
+    "selling content", "onlyfans", "fansly", "tribbing", "fisting",
 ]
 # 软成人词：擦边/身体向（用于成人占比与上下文）
 SOFT_ADULT = [
@@ -114,11 +123,23 @@ class RiskEngine:
 
     def assess_account(self, raw_data, extra_data=None):
         extra_data = extra_data or {}
+        profile = raw_data.get("profile", {}) or {}
         dims = self._get_dimensions_v4(raw_data, extra_data)
         total = sum(d["risk_score"] for d in dims.values())
         max_total = sum(d["max_risk"] for d in dims.values())
         score = max(0, min(100, round(total / max_total * 100)))
         level = "high" if score >= 60 else "medium" if score >= 30 else "low"
+
+        # ---- v4.7 置信度：无数据维度 + 样本覆盖率 ----
+        statuses = _parse_int(profile.get("statuses", 0))
+        n_tweets = len(raw_data.get("recent_tweets", []) or [])
+        coverage = (n_tweets / statuses) if statuses > 0 else 1.0
+        unverified = 2  # api_reply + ip_network 无数据
+        if not extra_data.get("search_visibility_tested"):
+            unverified += 1  # shadowban 未实测
+        confidence = 100 - unverified * 6 - max(0, int((1 - coverage) * 50))
+        confidence = max(30, min(95, confidence))
+        score_range = [max(0, score - 10), min(100, score + 10)]
 
         details = []
         for key, d in dims.items():
@@ -135,6 +156,9 @@ class RiskEngine:
         return {
             "score": score,
             "level": level,
+            "confidence": confidence,
+            "coverage": round(coverage, 3),
+            "score_range": score_range,
             "dimensions": dims,
             "details": details,
             "recommendation": rec_map[level],
@@ -239,7 +263,9 @@ class RiskEngine:
             for kw in SURVIVAL_MINOR_MISJUDGE_KEYWORDS:
                 if kw in txt and kw not in _minor_hits:
                     _minor_hits.append(kw)
-        _survival = min(8, len(_ban_hits) * 4) + min(7, len(_sw_hits) * 3) + (5 if _dox_hits else 0)
+        # 校准（v4.7）：160 个存活样本中露骨变现组与无变现组中位存续年限无差异，
+        # 变现信号对“存续”预测力弱，上限 7 -> 5，权重让给平台惩罚状态
+        _survival = min(8, len(_ban_hits) * 4) + min(5, len(_sw_hits) * 3) + (5 if _dox_hits else 0)
         if _minor_hits:
             _survival += 4
         if _impersonator_count >= 6:
@@ -251,7 +277,7 @@ class RiskEngine:
         if _ban_hits:
             _surv_issues.append(f"检测到封禁/重生史信号：{'、'.join(_ban_hits[:6])}（账号已被平台处理过，再封优先级高，+{min(8, len(_ban_hits) * 4)}）")
         if _sw_hits:
-            _surv_issues.append(f"检测到性交易/商业变现信号：{'、'.join(_sw_hits[:8])}（平台重点打击 + 法律风险，+{min(7, len(_sw_hits) * 3)}）")
+            _surv_issues.append(f"检测到性交易/商业变现信号：{'、'.join(_sw_hits[:8])}（平台重点打击 + 法律风险，+{min(5, len(_sw_hits) * 3)}）")
         if _impl_hits:
             _surv_issues.append(f"检测到隐晦引流词（未扣分，仅提示）：{'、'.join(_impl_hits[:6])}")
         if _dox_hits:
@@ -327,6 +353,19 @@ class RiskEngine:
             else [f"粉丝 {followers} <10K，Premium 维度无加分/扣分"]
         )
 
+        # ---- 2 维度证据：平台标记率（校准 marking 尺度）----
+        _platform_mark_rate = len(flagged) / n_all
+        _mark_raw = min(15, len(media_unmarked) * 3)
+        _mark_score = _mark_raw
+        _mark_issues = [f"{len(media_unmarked)} 条含成人关键词媒体未标记 Sensitive Media（每条 +3）"]
+        if media_unmarked and _platform_mark_rate < 0.10:
+            _mark_score = round(_mark_raw * 0.5)
+            _mark_issues.append(f"平台整体标记率仅 {_platform_mark_rate*100:.1f}%（<10%，平台认可的擦边尺度），按 50% 折算（{_mark_raw} -> {_mark_score}）")
+        elif media_unmarked:
+            _mark_issues.append(f"平台整体标记率 {_platform_mark_rate*100:.1f}%（>=10%），漏标按正常规则扣分")
+        else:
+            _mark_issues = [f"{len(flagged)}/{len(tweets)} 条推文已被 X 标记敏感，无漏标"]
+
         dims = {
             # ---- 1. ACC 计划合规 (0-15) ----
             "acc_plan": {
@@ -345,9 +384,9 @@ class RiskEngine:
             # ---- 2. ACC 三级标记合规 (0-15) ----
             "marking": {
                 "label": "ACC 三级标记合规",
-                "risk_score": min(15, len(media_unmarked) * 3), "max_risk": 15,
-                "issues": [f"{len(media_unmarked)} 条含成人关键词媒体未标记 Sensitive Media（每条 +3）"]
-                if media_unmarked else [f"{len(flagged)}/{len(tweets)} 条推文已被 X 标记敏感，无漏标"],
+                "risk_score": _mark_score, "max_risk": 15,
+                "issues": _mark_issues,
+                "platform_mark_rate": round(_platform_mark_rate, 3),
                 "total_adult_tweets": len(strong_hits) + len(soft_hits),
                 "flagged_count": len(flagged),
                 "unflagged_count": len(media_unmarked),
@@ -444,9 +483,15 @@ class RiskEngine:
         if 1 <= tier2_count <= 2:
             d9 += 5
             d9_issues.append(f"Tier 2 边界内容 {tier2_count} 条（1-2 条 +5）")
+        elif tier2_count >= 50:
+            d9 += 20
+            d9_issues.append(f"Tier 2 边界内容 {tier2_count} 条（≥50 条 +20，擦边浓度极高）")
+        elif tier2_count >= 10:
+            d9 += 15
+            d9_issues.append(f"Tier 2 边界内容 {tier2_count} 条（10-49 条 +15）")
         elif tier2_count >= 3:
             d9 += 10
-            d9_issues.append(f"Tier 2 边界内容 {tier2_count} 条（≥3 条 +10）")
+            d9_issues.append(f"Tier 2 边界内容 {tier2_count} 条（3-9 条 +10）")
         else:
             d9_issues.append("未检出 Tier 2 边界内容")
         dims["prohibited"] = {

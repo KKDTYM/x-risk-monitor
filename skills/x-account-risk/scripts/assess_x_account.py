@@ -91,6 +91,7 @@ raw_data = {
         "description": bio,
         "followers_count": followers,
         "following_count": following,
+        "statuses": profile_raw.get('statuses', 0),
         "is_sensitive": False,
         "is_blue_verified": bool(profile_raw.get('verified', False)),
         "sensitive_profile_warning": bool(profile_raw.get('sensitive_profile_warning', False)),
@@ -104,8 +105,33 @@ extra_data = {}
 _evidence = os.path.join(DATA, f'{LOWER}_search_evidence.json')
 if os.path.exists(_evidence):
     extra_data = json.load(open(_evidence, encoding='utf-8'))
+    extra_data['search_visibility_tested'] = True
 extra_data['handle'] = HANDLE
 result = engine.assess_account(raw_data, extra_data)
+
+# ---- 历史趋势（增量监控）：追加到 data/history/<handle>.jsonl ----
+_hist_dir = os.path.join(DATA, 'history')
+os.makedirs(_hist_dir, exist_ok=True)
+_hist_path = os.path.join(_hist_dir, f'{LOWER}.jsonl')
+_prev_score = None
+if os.path.exists(_hist_path):
+    for line in open(_hist_path, encoding='utf-8'):
+        line = line.strip()
+        if line:
+            try:
+                _prev_score = json.loads(line).get('score')
+            except Exception:
+                pass
+_now = datetime.now().isoformat(timespec='seconds')
+with open(_hist_path, 'a', encoding='utf-8') as f:
+    f.write(json.dumps({
+        "evaluated_at": _now,
+        "score": result['score'],
+        "level": result['level'],
+        "confidence": result.get('confidence'),
+        "coverage": result.get('coverage'),
+        "dimensions": {k: v['risk_score'] for k, v in result['dimensions'].items()},
+    }, ensure_ascii=False) + '\n')
 result["meta"] = {
     "handle": f"@{HANDLE}",
     "name": profile_raw.get('name', ''),
@@ -118,10 +144,15 @@ result["meta"] = {
     "statuses": profile_raw.get('statuses', 0),
     "search_tests": extra_data,
     "impersonators": extra_data.get('impersonators', []),
+    "confidence": result.get('confidence'),
+    "coverage": result.get('coverage'),
+    "score_range": result.get('score_range'),
+    "prev_score": _prev_score,
+    "engine_version": "v4.7",
 }
 result["tweets"] = recent
 
-out_path = os.path.join(DATA, f'{LOWER}_risk_v3.json')
+out_path = os.path.join(DATA, f'{LOWER}_risk.json')
 json.dump(result, open(out_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
 
 print(f"=== @{HANDLE} RISK SCORE ===")

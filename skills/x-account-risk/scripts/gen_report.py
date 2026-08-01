@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""X 账号风险 HTML 报告生成器 v4.6（11 维度）。
+"""X 账号风险 HTML 报告生成器 v4.7（11 维度）。
 Usage: python gen_report_v4.py <risk_json> [output.html]
 """
 import html
@@ -34,7 +34,7 @@ DIMS = [
      "单一 NSFW 内容 >80% +5；原创与搬运比 <1:3 +4；60% 推文在 2 小时内发布 +3；>70% 推文互动低（<5 赞）+3。",
      "增加原创内容，避免内容单一与短时刷屏，提升互动。"),
     ("prohibited", "9. 禁止内容零接触", 25,
-     "Tier 1（非合意/未成年/性暴力/血腥剥刮）：1 条 +20，≥3 条 +25；Tier 2 边界（暗示）：1-2 条 +5，≥3 条 +10。",
+     "Tier 1（非合意/未成年/性暴力/血腥剥刮）：1 条 +20，≥2 条 +25；Tier 2 边界（暗示）：1-2 条 +5，3-9 条 +10，10-49 条 +15，≥50 条 +20。",
      "严禁非合意/未成年/性暴力/血腥内容，控制擦边暗示。"),
     ("survival", "10. 账号存续风险", 15,
      "封禁/重生史信号（复活版/重生号/被冻/冻结/重开/旧号/被盗号等）+4/个（上限 8）；性交易/商业变现信号（接线下/可约/报价/课表/口令/门槛/付费/有偿/图包/电报/淘宝等）+3/个（上限 7，“无/不+词”的声明不扣）；隐私泄露/开盒信号 +5。",
@@ -66,6 +66,20 @@ def gen_report(data):
     name = meta.get("name", "")
     tweets = data.get("tweets", [])
     dims = data["dimensions"]
+    confidence = meta.get("confidence")
+    coverage = meta.get("coverage")
+    score_range = meta.get("score_range") or [0, 100]
+    prev_score = meta.get("prev_score")
+    delta = (score - prev_score) if prev_score is not None else None
+    delta_html = ""
+    if delta is not None:
+        arrow = "↗" if delta > 0 else "↘" if delta < 0 else "→"
+        color = "#e74c3c" if delta > 3 else "#2ecc71" if delta < -3 else "#999"
+        delta_html = f"<p class='trend' style='color:{color};'>📈 趋势：上次 {prev_score} → 本次 {score}（{arrow} {delta:+d}）</p>"
+    conf_html = ""
+    if confidence is not None:
+        conf_note = "（样本覆盖率低，低置信度，仅供参考）" if (coverage or 1) < 0.5 else ""
+        conf_html = f"<p class='trend'>🔬 置信度：{confidence}%（样本覆盖率 {coverage*100:.0f}%）｜ 分数区间：{score_range[0]}–{score_range[1]} {conf_note}</p>"
 
     level_cn = {"high": "高风险", "medium": "中风险", "low": "低风险"}[level]
     risk_color = {"high": "#e74c3c", "medium": "#f39c12", "low": "#2ecc71"}[level]
@@ -247,6 +261,7 @@ def gen_report(data):
   .score-number {{ font-size:54px; font-weight:bold; color:{risk_color}; }}
   .score-label {{ font-size:13px; color:#999; }}
   .risk-label {{ font-size:20px; font-weight:bold; color:{risk_color}; margin-top:12px; }}
+  .trend {{ font-size:13.5px; margin-top:8px; }}
   .score-table {{ width:100%; border-collapse:collapse; margin:20px 0; font-size:14px; }}
   .score-table th {{ background:#f5f5f5; padding:11px; text-align:left; border-bottom:2px solid #ddd; }}
   .score-table td {{ padding:9px 11px; border-bottom:1px solid #eee; }}
@@ -283,7 +298,8 @@ def gen_report(data):
   <div class="header">
     <h1>X 账号风险评估报告</h1>
     <p>{esc(handle)} · {esc(name)}</p>
-    <p>评估日期：{esc((meta.get('evaluated_at') or '')[:10])} ｜ 引擎：v4.6（11 维度） ｜ 数据源：{esc(meta.get('data_source') or '')}</p>
+    <p>评估日期：{esc((meta.get('evaluated_at') or '')[:10])} ｜ 引擎：v4.7（11 维度）</p>
+    <p>数据源：{esc(meta.get('data_source') or '')}</p>
   </div>
     <div class="score-section">
     <div class="score-circle"><div class="score-inner">
@@ -291,6 +307,8 @@ def gen_report(data):
       <div class="score-label">/ 100 分</div>
     </div></div>
     <div class="risk-label">{risk_emoji} {level_cn}</div>
+    {delta_html}
+    {conf_html}
     <p style="margin-top:10px;font-size:14px;color:#666;">
       粉丝 {meta.get('followers', '?')} ｜ 关注 {meta.get('following', '?')} ｜ 分析推文 {meta.get('tweets_analyzed', len(tweets))} 条
     </p>
@@ -325,7 +343,8 @@ def gen_report(data):
     <strong>💡 评分规则：</strong>总分 = 各维度风险分之和（分数越高风险越大），归一化到 0-100；负分 = 信任加分。
   </div>
   <div class="footer">
-    X 账号风险监控系统 v4.6（11 维度）｜ 数据来源：登录态 DOM 时间线 + X embed + fxTwitter ｜ 仅用于合规研究
+    X 账号风险监控系统 v4.7（11 维度）｜ 数据来源：登录态 DOM 时间线 + X embed + fxTwitter ｜ 仅用于合规研究<br>
+    敏感数据等级：高（含成人内容与个人账号信息）｜ 仅限授权监控使用，禁止公开传播与转售
   </div>
 </div>
 </body>
