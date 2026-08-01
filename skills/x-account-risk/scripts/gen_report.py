@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""X 账号风险 HTML 报告生成器 v4.3（10 维度）。
+"""X 账号风险 HTML 报告生成器 v4.4（11 维度）。
 Usage: python gen_report_v4.py <risk_json> [output.html]
 """
 import html
@@ -39,6 +39,9 @@ DIMS = [
     ("survival", "10. 账号存续风险", 15,
      "封禁/重生史信号（复活版/重生号/被冻/冻结/重开/旧号/被盗号等）+4/个（上限 8）；性交易/商业变现信号（接线下/可约/报价/课表/口令/门槛/付费/有偿/图包/电报/淘宝等）+3/个（上限 7，“无/不+词”的声明不扣）；隐私泄露/开盒信号 +5。",
      "被封过的号按原模式重启 = 再封高优先级；涉性交易与隐私泄露的号是平台与执法重点，建议立即整改运营模式。"),
+    ("human", "11. 真人感/营销号形态", 12,
+     "卖货/引流内容占比 >=25% +3、>=50% +6；生活化内容占比 <8% +3（疑似纯营销号）；转帖占比 >50% +3；真人感减免：生活化内容 >=25% -2、>=50% -4。",
+     "营销号形态（卖货+无生活+搬运）是平台打击重点，也最容易被举报；建议补充真实生活内容、减少引流话术与搬运。"),
 ]
 
 
@@ -260,7 +263,7 @@ def gen_report(data):
   <div class="header">
     <h1>X 账号风险评估报告</h1>
     <p>{esc(handle)} · {esc(name)}</p>
-    <p>评估日期：{esc((meta.get('evaluated_at') or '')[:10])} ｜ 引擎：v4.3（10 维度） ｜ 数据源：{esc(meta.get('data_source') or '')}</p>
+    <p>评估日期：{esc((meta.get('evaluated_at') or '')[:10])} ｜ 引擎：v4.4（11 维度） ｜ 数据源：{esc(meta.get('data_source') or '')}</p>
   </div>
     <div class="score-section">
     <div class="score-circle"><div class="score-inner">
@@ -286,7 +289,7 @@ def gen_report(data):
   </div>
   {findings_html}
   <div class="dimensions">
-    <h2 class="section-title">📋 10 维度详细评分（含扣分标准）</h2>
+    <h2 class="section-title">📋 11 维度详细评分（含扣分标准）</h2>
     {cards}
   </div>
   <div class="tweets-wrap">
@@ -301,7 +304,7 @@ def gen_report(data):
     <strong>💡 评分规则：</strong>总分 = 各维度风险分之和（分数越高风险越大），归一化到 0-100；负分 = 信任加分。
   </div>
   <div class="footer">
-    X 账号风险监控系统 v4.3（10 维度）｜ 数据来源：登录态 DOM 时间线 + X embed + fxTwitter ｜ 仅用于合规研究
+    X 账号风险监控系统 v4.4（11 维度）｜ 数据来源：登录态 DOM 时间线 + X embed + fxTwitter ｜ 仅用于合规研究
   </div>
 </div>
 </body>

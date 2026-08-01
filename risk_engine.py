@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""X 账号风险评分引擎 v4.3（10 维度，风险分逻辑：分数越高风险越大）。
+"""X 账号风险评分引擎 v4.4（11 维度，风险分逻辑：分数越高风险越大）。
 
-维度总分上限 = 130（15+15+12+10+10+8+8+12+25+15），归一化到 0-100。
+维度总分上限 = 142（15+15+12+10+10+8+8+12+25+15+12），归一化到 0-100。
 等级：>=60 高风险（红） / 30-59 中风险（黄） / <30 低风险（绿）。
 数据源：Playwright 登录态 DOM 时间线 + X syndication embed + fxTwitter。
 """
@@ -58,6 +58,22 @@ SURVIVAL_SW_KEYWORDS = [
 ]
 # 隐私侵害信号：泄露他人姓名/住址等（开盒）
 SURVIVAL_DOX_KEYWORDS = ["地址是", "家庭住址", "住址"]
+
+# ---- 第 11 维度：真人感 / 营销号形态 ----
+# 生活化关键词：真人博主会有日常/个人叙事
+LIFE_KEYWORDS = [
+    "吃饭", "午饭", "晚饭", "早餐", "天气", "下雨", "上课", "上班", "下班",
+    "实习", "考试", "作业", "累了", "好累", "朋友", "室友", "爸妈", "睡觉",
+    "头疼", "感冒", "生病", "vlog", "心情", "吐槽", "生日", "放假", "回家",
+    "剪头发", "逛街", "喝酒", "唱歌",
+]
+# 卖货/引流关键词：营销号特征（统计非转帖内容中的占比）
+SELL_KEYWORDS = [
+    "私信", "加我", "找我", "电报", "tg", "口令", "解锁", "课表", "门槛",
+    "好友位", "报价", "下单", "购买", "发售", "店铺", "淘宝", "有偿", "付费",
+    "包月", "订阅", "打赏", "图包", "加群", "涩涩", "接单", "可约", "线下",
+    "价格", "莞式",
+]
 
 
 def _hit(text, keywords):
@@ -213,6 +229,53 @@ class RiskEngine:
         if not _surv_issues:
             _surv_issues.append("未检测到封禁史/性交易/隐私侵害信号")
 
+        # ---- 11 维度证据：真人感 / 营销号形态 ----
+        _own_tweets = [t for t in tweets if not t.get("is_retweet")]
+        _n_own = max(1, len(_own_tweets))
+        _n_all = max(1, len(tweets))
+        _life_cnt = sum(1 for t in _own_tweets if _hit(t.get("text") or t.get("raw") or "", LIFE_KEYWORDS))
+        _sell_cnt = sum(1 for t in _own_tweets if _hit(t.get("text") or t.get("raw") or "", SELL_KEYWORDS))
+        _repost_cnt = sum(1 for t in tweets if t.get("is_retweet"))
+        _life_ratio = _life_cnt / _n_own
+        _sell_ratio = _sell_cnt / _n_own
+        _repost_ratio = _repost_cnt / _n_all
+        _bio_sell = sum(1 for kw in SELL_KEYWORDS if kw in (profile.get("description") or ""))
+        _human_score = 0
+        _human_break = {}
+        if _sell_ratio >= 0.5:
+            _human_score += 6
+            _human_break["卖货内容占比"] = f"{_sell_ratio*100:.0f}% 推文含卖货/引流词（>=50%，+6）"
+        elif _sell_ratio >= 0.25:
+            _human_score += 3
+            _human_break["卖货内容占比"] = f"{_sell_ratio*100:.0f}% 推文含卖货/引流词（>=25%，+3）"
+        else:
+            _human_break["卖货内容占比"] = f"{_sell_ratio*100:.0f}% 推文含卖货/引流词（<25%，+0）"
+        if _bio_sell >= 2:
+            _human_score += 3
+            _human_break["简介卖货"] = f"简介含 {_bio_sell} 个卖货/引流词（>=2，营销号形态，+3）"
+        else:
+            _human_break["简介卖货"] = f"简介卖货/引流词 {_bio_sell} 个（<2，+0）"
+        if _life_ratio < 0.08:
+            _human_score += 3
+            _human_break["生活化内容"] = f"仅 {_life_ratio*100:.0f}% 推文有生活化内容（<8%，疑似纯营销号，+3）"
+        else:
+            _human_break["生活化内容"] = f"{_life_ratio*100:.0f}% 推文有生活化内容（>=8%，+0）"
+        if _repost_ratio > 0.5:
+            _human_score += 3
+            _human_break["搬运占比"] = f"转帖占 {_repost_ratio*100:.0f}%（>50%，搬运号，+3）"
+        else:
+            _human_break["搬运占比"] = f"转帖占 {_repost_ratio*100:.0f}%（<=50%，+0）"
+        _human_discount = 0
+        if _life_ratio >= 0.5:
+            _human_discount = 4
+            _human_break["真人感减免"] = f"生活化内容 {_life_ratio*100:.0f}%（>=50%，真人博主形态，-4）"
+        elif _life_ratio >= 0.25:
+            _human_discount = 2
+            _human_break["真人感减免"] = f"生活化内容 {_life_ratio*100:.0f}%（>=25%，-2）"
+        else:
+            _human_break["真人感减免"] = f"生活化内容 {_life_ratio*100:.0f}%（<25%，无减免）"
+        _human_score = max(0, min(12, _human_score - _human_discount))
+
         # ---- 7 维度证据：Premium 状态 ----
         _prem_score = -2 if (profile.get("is_blue_verified") or profile.get("verified")) else (2 if followers > 10000 else 0)
         _prem_issues = ["蓝标认证 → 推断开通 Premium（-2 信任加分）"] if (profile.get("is_blue_verified") or profile.get("verified")) else (
@@ -358,6 +421,14 @@ class RiskEngine:
             "ban_hits": _ban_hits[:8],
             "sw_hits": _sw_hits[:10],
             "dox_hits": _dox_hits[:4],
+        }
+        dims["human"] = {
+            "label": "真人感/营销号形态",
+            "risk_score": _human_score, "max_risk": 12,
+            "issues": [f"{k}：{v}" for k, v in _human_break.items()],
+            "life_ratio": round(_life_ratio, 3),
+            "sell_ratio": round(_sell_ratio, 3),
+            "repost_ratio": round(_repost_ratio, 3),
         }
         return dims
 
