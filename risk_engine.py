@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""X 账号风险评分引擎 v4.2（10 维度，风险分逻辑：分数越高风险越大）。
+"""X 账号风险评分引擎 v4.3（10 维度，风险分逻辑：分数越高风险越大）。
 
 维度总分上限 = 130（15+15+12+10+10+8+8+12+25+15），归一化到 0-100。
 等级：>=60 高风险（红） / 30-59 中风险（黄） / <30 低风险（绿）。
@@ -49,11 +49,12 @@ SURVIVAL_BAN_KEYWORDS = [
     "复活版", "重生号", "复活", "重生", "被冻", "冻结",
     "重开", "復活", "旧号", "被盗号", "号被盗",
 ]
-# 性交易/招嫖商业信号：平台重点打击 + 法律风险面
+# 性交易/招嫖 + 商业变现信号：平台重点打击 + 法律风险面
 SURVIVAL_SW_KEYWORDS = [
     "接线下", "可约", "全国可飞", "全国可✈", "莞式", "报价",
     "课表", "口令", "好友位", "私信解锁", "涩涩基地", "包夜", "线上一对一",
-    "领课表", "接单", "约炮",
+    "领课表", "接单", "约炮", "门槛", "可线下", "🉑线下", "付费", "有偿",
+    "包月", "订阅", "打赏", "图包", "电报", "加群", "淘宝", "店铺", "发售",
 ]
 # 隐私侵害信号：泄露他人姓名/住址等（开盒）
 SURVIVAL_DOX_KEYWORDS = ["地址是", "家庭住址", "住址"]
@@ -187,13 +188,18 @@ class RiskEngine:
         _dox_hits = []
         for txt in _all_texts:
             for kw in SURVIVAL_BAN_KEYWORDS:
-                if kw in txt and kw not in _ban_hits:
+                if kw in txt and ("无" + kw) not in txt and ("不" + kw) not in txt and kw not in _ban_hits:
                     _ban_hits.append(kw)
             for kw in SURVIVAL_SW_KEYWORDS:
-                if kw in txt and kw not in _sw_hits:
+                if ("无" + kw) in txt or ("不" + kw) in txt or kw in _sw_hits:
+                    continue
+                if kw == "门槛" and not re.search(r"门槛\s*\d", txt):
+                    # “门槛”需与数字共现（如 门槛300/🚪门槛300），单独提问不算变现
+                    continue
+                if kw in txt:
                     _sw_hits.append(kw)
             for kw in SURVIVAL_DOX_KEYWORDS:
-                if kw in txt and kw not in _dox_hits:
+                if kw in txt and ("无" + kw) not in txt and ("不" + kw) not in txt and kw not in _dox_hits:
                     _dox_hits.append(kw)
         _survival = min(8, len(_ban_hits) * 4) + min(7, len(_sw_hits) * 3) + (5 if _dox_hits else 0)
         _survival = min(15, _survival)
@@ -201,7 +207,7 @@ class RiskEngine:
         if _ban_hits:
             _surv_issues.append(f"检测到封禁/重生史信号：{'、'.join(_ban_hits[:6])}（账号已被平台处理过，再封优先级高，+{min(8, len(_ban_hits) * 4)}）")
         if _sw_hits:
-            _surv_issues.append(f"检测到性交易/招嫖商业信号：{'、'.join(_sw_hits[:8])}（平台重点打击 + 法律风险，+{min(7, len(_sw_hits) * 3)}）")
+            _surv_issues.append(f"检测到性交易/商业变现信号：{'、'.join(_sw_hits[:8])}（平台重点打击 + 法律风险，+{min(7, len(_sw_hits) * 3)}）")
         if _dox_hits:
             _surv_issues.append(f"检测到疑似隐私泄露/开盒信号：{'、'.join(_dox_hits[:4])}（涉他人真实信息，+5）")
         if not _surv_issues:
