@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""X 账号风险评分引擎 v4.9（11 维度，风险分逻辑：分数越高风险越大）。
+"""X 账号风险评分引擎 v5.0（11 维度，风险分逻辑：分数越高风险越大）。
 
 维度总分上限 = 142（15+15+12+10+10+8+8+12+25+15+12），归一化到 0-100。
 等级：>=60 高风险（红） / 30-59 中风险（黄） / <30 低风险（绿）。
@@ -13,12 +13,12 @@ v4.7 变更：
 - 变现信号权重下调（校准：存活样本中露骨变现组与无变现组存续年限无差异）
 - 多语言词库（英文关键词）
 
-v4.9 变更（train/test 校准证据）：
-- 358 样本 train/test 划分：训练 AUC 0.821 -> 测试 AUC 0.560（过拟合）
-- 移除“注册<1年新号 +2”（age 特征测试集失效）
-- 变现权重回退上限 5（v4.8 的 7 为训练集调参，测试集不支持）
-- marking 折算收紧：平台标记率 <10% 且 NSFW 占比 <30% 才打折
-- 复核落盘：data/review/<handle>.json 记录人工复核状态
+v5.0 变更（10330 样本校准，calibration_final.json）：
+- 测试集 AUC 0.819（ban 特征驱动）；单特征 AUC：sell_a 0.196 / sell_b 0.253 / age 0.186 / verified 0.124——
+  变现与年龄特征方向反向或随机，变现权重上限 5 -> 3（仅弱提示）
+- ban（bio 封禁/重生表述）为唯一可靠信号（负样本误报极低）
+- 保留：ban 上限 8、开盒 +5、幼态 +4、仿冒 +2/+4、蓝标 -2（verified 反向支持）
+- 复核落盘、marking 收紧、Tier2 分级、置信度机制保持不变
 """
 import re
 from datetime import datetime
@@ -272,9 +272,9 @@ class RiskEngine:
             for kw in SURVIVAL_MINOR_MISJUDGE_KEYWORDS:
                 if kw in txt and kw not in _minor_hits:
                     _minor_hits.append(kw)
-        # 校准（v4.9）：train/test 划分显示训练 AUC 0.821 -> 测试 AUC 0.560（过拟合）。
-        # 变现上限回退保守值 5；移除新号 +2（age 特征测试集失效）。
-        _survival = min(8, len(_ban_hits) * 4) + min(5, len(_sw_hits) * 3) + (5 if _dox_hits else 0)
+        # 校准（v5.0）：10330 样本测试集单特征 AUC：sell_a 0.196 / sell_b 0.253（方向反向），
+        # 变现信号仅为弱提示（上限 3）；ban 为唯一可靠信号（AUC 0.819 驱动）
+        _survival = min(8, len(_ban_hits) * 4) + min(3, len(_sw_hits) * 3) + (5 if _dox_hits else 0)
         if _minor_hits:
             _survival += 4
         if _impersonator_count >= 6:
@@ -286,7 +286,7 @@ class RiskEngine:
         if _ban_hits:
             _surv_issues.append(f"检测到封禁/重生史信号：{'、'.join(_ban_hits[:6])}（账号已被平台处理过，再封优先级高，+{min(8, len(_ban_hits) * 4)}）")
         if _sw_hits:
-            _surv_issues.append(f"检测到性交易/商业变现信号：{'、'.join(_sw_hits[:8])}（平台重点打击 + 法律风险，+{min(5, len(_sw_hits) * 3)}）")
+            _surv_issues.append(f"检测到性交易/商业变现信号：{'、'.join(_sw_hits[:8])}（校准显示变现与重生史相关性弱，仅弱提示 +{min(3, len(_sw_hits) * 3)}）")
         if _impl_hits:
             _surv_issues.append(f"检测到隐晦引流词（未扣分，仅提示）：{'、'.join(_impl_hits[:6])}")
         if _dox_hits:

@@ -81,6 +81,17 @@ def gen_report(data):
         conf_note = "（样本覆盖率低，低置信度，仅供参考）" if (coverage or 1) < 0.5 else ""
         conf_html = f"<p class='trend'>🔬 置信度：{confidence}%（样本覆盖率 {coverage*100:.0f}%）｜ 分数区间：{score_range[0]}–{score_range[1]} {conf_note}</p>"
 
+    # 行动矩阵（v5.0）
+    if score >= 55:
+        action = "🔴 高风险：立即处理——删除 Tier1/露骨内容、补标记、确认 ACC，停止一切新增发布"
+    elif score >= 40:
+        action = "🟠 建议整改：优先删除 Tier1/漏标内容，确认 ACC 计划，控制搬运与变现话术"
+    elif score >= 25:
+        action = "🟡 关注：补齐漏标，留意仿冒号与举报动态，确认 ACC 状态"
+    else:
+        action = "🟢 常规监控：保持现状，定期复查即可"
+    action_html = f"<p class='trend'>🎯 行动建议：{action}</p>"
+
     level_cn = {"high": "高风险", "medium": "中风险", "low": "低风险"}[level]
     risk_color = {"high": "#e74c3c", "medium": "#f39c12", "low": "#2ecc71"}[level]
     risk_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}[level]
@@ -318,6 +329,7 @@ def gen_report(data):
       <div class="score-label">/ 100 分</div>
     </div></div>
     <div class="risk-label">{risk_emoji} {level_cn}</div>
+    {action_html}
     {delta_html}
     {conf_html}
     <p style="margin-top:10px;font-size:14px;color:#666;">
