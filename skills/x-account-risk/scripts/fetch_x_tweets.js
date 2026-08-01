@@ -10,7 +10,7 @@ if (!TARGET) {
 }
 const WS = process.argv[3] || process.cwd();
 const COOKIE_FILE = process.argv[4] || path.join(WS, 'conny_cookies.json');
-const DEBUG = path.join(WS, 'maibao_debug');
+const DEBUG = path.join(WS, 'zixuanmiao_debug');
 if (!fs.existsSync(DEBUG)) fs.mkdirSync(DEBUG, { recursive: true });
 const save = (n, b) => fs.writeFileSync(path.join(DEBUG, `${n}.png`), b);
 const delay = ms => new Promise(r => setTimeout(r, ms));
@@ -31,6 +31,7 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
 
   const browser = await chromium.launch({
     headless: true,
+    channel: 'msedge',
     args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
   });
   const context = await browser.newContext({
@@ -44,6 +45,22 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
   console.log(`\n[1] Navigating to @${TARGET}...`);
   await page.goto(`https://x.com/${TARGET}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await delay(6000);
+
+  // 自动等待并点击「此个人资料可能包含潜在的敏感内容」警告门上的“是，查看个人资料”按钮
+  let clickedSensitiveGate = false;
+  try {
+    await page.locator('button[data-testid="empty_state_button_text"]').click({ timeout: 25000 });
+    clickedSensitiveGate = true;
+  } catch (e) {
+    clickedSensitiveGate = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button, div[role="button"], a')]
+        .find(b => /是，查看个人资料|查看个人资料|Yes, view profile|View profile/i.test(b.innerText || ''));
+      if (btn) { try { btn.click(); return true; } catch (e2) { return false; } }
+      return false;
+    });
+  }
+  console.log('   sensitive-gate clicked:', clickedSensitiveGate);
+  if (clickedSensitiveGate) await delay(5000);
   await save('01_profile', await page.screenshot());
 
   const state = await page.evaluate(() => {
@@ -71,15 +88,29 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
       const blurBtn = [...art.querySelectorAll('button, div[role="button"]')]
         .find(b => /显示|查看|可能包含敏感/i.test(b.innerText || ''));
       if (blurBtn) { try { blurBtn.click(); } catch (e) {} }
+      // 真实推文链接/ID
+      const link = art.querySelector('a[href*="/status/"]');
+      const permalink = link ? link.getAttribute('href') : '';
+      const mId = permalink ? permalink.match(/\/status\/(\d+)/) : null;
+      // 互动数字：从全部 aria-label 中按关键字提取
+      const allLabels = [...art.querySelectorAll('[aria-label]')].map(e => e.getAttribute('aria-label')).join(' | ');
+      const num = (re) => { const m = allLabels.match(re); return m ? m[1] : ''; };
+      const likes = num(/([\d,]+)\s*喜欢/);
+      const retweets = num(/([\d,]+)\s*次转帖/);
+      const replies = num(/([\d,]+)\s*回复/);
+      const views = num(/([\d,]+)\s*次观看/);
+      const bookmarks = num(/([\d,]+)\s*书签/);
+      // 媒体检测：img/video/图片容器
+      const mediaEls = art.querySelectorAll('img[src*="pbs.twimg.com"], video, div[data-testid="tweetPhoto"], div[data-testid="tweetVideo"]');
+      const hasMedia = mediaEls.length > 0;
       return {
         text,
         time: art.querySelector('time')?.getAttribute('datetime') || '',
-        replies: art.querySelector('[aria-label*="repl"],[aria-label*="回复"]')?.getAttribute('aria-label') || '',
-        retweets: art.querySelector('[aria-label*="Retweet"],[aria-label*="转"]')?.getAttribute('aria-label') || '',
-        likes: art.querySelector('[aria-label*="Like"],[aria-label*="喜欢"]')?.getAttribute('aria-label') || '',
-        views: art.querySelector('[aria-label*="view"],[aria-label*="浏览"]')?.getAttribute('aria-label') || '',
-        hasMedia: !!art.querySelector('img[data-testid="tweetPhoto"], video'),
+        likes, retweets, replies, views, bookmarks,
+        hasMedia,
         possibly_sensitive: /显示|可能包含敏感|sensitive|敏感内容/i.test(art.innerText),
+        url: permalink ? 'https://x.com' + permalink.split('?')[0] : '',
+        id: mId ? mId[1] : '',
       };
     }).filter(t => t.text.trim());
   };
@@ -98,6 +129,20 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
   await save('02_tweets', await page.screenshot());
   const tweets = [...collected.values()];
   const lower = TARGET.toLowerCase();
+
+  if (tweets.length === 0) {
+    const diag = await page.evaluate(() => {
+      const body = document.body?.innerText || '';
+      return {
+        url: location.href,
+        bodyHead: body.slice(0, 900),
+        articles: document.querySelectorAll('article[data-testid="tweet"]').length,
+        gate: !!document.querySelector('button[data-testid="empty_state_button_text"]'),
+      };
+    });
+    console.log('--- DIAG (0 tweets) ---');
+    console.log(JSON.stringify(diag, null, 2));
+  }
 
   console.log(`\n[✓] Extracted ${tweets.length} tweets from @${TARGET}`);
   fs.writeFileSync(path.join(WS, 'data', `${lower}_tweets.json`), JSON.stringify(tweets, null, 2));

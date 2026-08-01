@@ -60,13 +60,19 @@ for t in tweets_raw:
         raw = raw_text + " https://x.com/media_item"
     recent.append({
         "text": raw_text,
-        "is_retweet": False,
+        "is_retweet": bool(t.get('is_retweet', False)),
+        "is_reply": bool(t.get('is_reply', False)),
         "is_sensitive": bool(t.get('possibly_sensitive', False)),
         "possibly_sensitive": bool(t.get('possibly_sensitive', False)),
+        "hasMedia": bool(t.get('hasMedia', False)),
         "likes": parse_int(t.get('likes', '')),
         "retweets": parse_int(t.get('retweets', '')),
-        "url": None,
+        "url": t.get('url') or None,
         "raw": raw,
+        "time": t.get('time', ''),
+        "id": t.get('id', ''),
+        "views": parse_int(t.get('views', '')),
+        "source": t.get('source', ''),
     })
 
 bio = profile_raw.get('bio', '')
@@ -86,13 +92,20 @@ raw_data = {
         "followers_count": followers,
         "following_count": following,
         "is_sensitive": False,
+        "is_blue_verified": bool(profile_raw.get('verified', False)),
+        "sensitive_profile_warning": bool(profile_raw.get('sensitive_profile_warning', False)),
     },
     "recent_tweets": recent,
     "is_sensitive": False,
 }
 
 engine = RiskEngine({})
-result = engine.assess_account(raw_data, [])
+extra_data = {}
+_evidence = os.path.join(DATA, f'{LOWER}_search_evidence.json')
+if os.path.exists(_evidence):
+    extra_data = json.load(open(_evidence, encoding='utf-8'))
+extra_data['handle'] = HANDLE
+result = engine.assess_account(raw_data, extra_data)
 result["meta"] = {
     "handle": f"@{HANDLE}",
     "name": profile_raw.get('name', ''),
@@ -100,7 +113,11 @@ result["meta"] = {
     "followers": followers,
     "following": following,
     "evaluated_at": datetime.now().isoformat(),
-    "data_source": f"Playwright DOM scrape (Cookie-authorized, real @{HANDLE} timeline)",
+    "data_source": f"登录态深度抓取（主时间线+回复标签页）+ X embed + fxTwitter（阅读量），共 {len(recent)} 条去重（约占账号 {profile_raw.get('statuses', 0)} 条的 {len(recent)*100//max(1, profile_raw.get('statuses', 0))}%）",
+    "profile_sensitive_warning": bool(profile_raw.get('sensitive_profile_warning', False)),
+    "statuses": profile_raw.get('statuses', 0),
+    "search_tests": extra_data,
+    "impersonators": extra_data.get('impersonators', []),
 }
 result["tweets"] = recent
 

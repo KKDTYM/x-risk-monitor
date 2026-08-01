@@ -3,142 +3,99 @@ name: x-account-risk
 description: 抓取 X(Twitter) 账号公开推文并通过 9 维度风险引擎(风险分逻辑，分数越高风险越大)评分，生成可视化 HTML 报告。当用户要求"评估某 X 账号风险""给 @handle 打分""分析 X 账号合规性""生成 X 账号风险评估报告"，或需要绕过 X 自动化限流抓取真实推文 DOM 时使用。
 ---
 
-# X 账号抓取 + 风险评分 Skill v4
+# X 账号抓取 + 风险评分 Skill v4.1
 
-一键完成：**抓真实推文 → 跑 9 维度风险引擎 → 出可视化 HTML 报告**。
-评分逻辑为「风险分」：分数越高风险越大（≥60 高风险 / 30–59 中等 / <30 低风险）。
+一键完成：**抓真实推文（登录态 DOM）→ 合并转帖分类 → 9 维度风险引擎 → 可视化 HTML 报告**。
+评分逻辑：**风险分**，分数越高风险越大（≥60 高风险 / 30–59 中风险 / <30 低风险）。
 
-## v4 评分引擎（9 维度，满分 150 分 → 归一化到 0-100）
+## v4.1 引擎修正（2026-08-01 实战验证，与 v4 的差异）
 
-v3 的 6 维度升级为 v4 的 9 维度。每个维度独立计算风险分，总分 = 各维度风险分之和，再归一化到 0-100。
+1. **ACC 计划合规只按成人内容占比判定**：主时间线成人/敏感占比 >20% 才 +10；漏标媒体不再“双重计分”（漏标只由维度 2 负责）。
+2. **Tier 1 语境化**：`萝莉/正太/cp/强迫/强奸/下药/未成年` 等词必须与严重语境共现才算 Tier 1（如“被玩具强奸了”=角色扮演、“蛋糕别下药”=自嘲梗、“未成年女友是吧”=调侃），灰色词降级 Tier 2 并提示人工复核。
+3. **低互动惩罚仅适用于 ≥5000 粉账号**：小号互动低属正常现象，避免结构性误伤。
+4. **短英文关键词词边界匹配**：`ts`、`cp`、`sub`、`18+` 等不再子串误匹配。
+
+## 评分引擎表（9 维度，总分 115 → 归一化 0-100）
 
 | 序号 | 维度名称 | 原始分值 | 含义 |
 |------|----------|---------|------|
-| 1 | **ACC 计划合规** | 0-15 | 检测是否加入 X Adult Content Creator 计划。未加入 +10 分；加入但未完善资料 +7 分；已完善 0 分。2026 年强制要求。 |
-| 2 | **ACC 三级标记合规** | 0-15 | 成人内容推文是否正确标记 Sensitive Media。每条未标记 +3 分（最多 15 分）。检测关键词：小穴、肉棒、男娘、femboy、ts、乳胶、女仆、nsfw、18+ 等 50+ 词。 |
-| 3 | **API 自动回复合规** | 0-12 | API v2 2026 限制：自动回复必须提及/引用原作者。未提及/引用 +3 分/次；同一推文被回复 >10 次 +2 分/条；回复内容重复 >5 条 +3 分。 |
-| 4 | **IP/网络环境合规** | 0-10 | 检测数据中心 IP（AWS/阿里云/腾讯云/Tor）+5 分；频繁 IP 切换（>5 个/周）+3 分。住宅 IP正常。 |
-| 5 | **Shadowban 隐限流** | 0-10 | 搜索用户名无推文显示 +6 分；回复深度 <3 层 +3 分；印象数骤降 >50% +3 分；特定标签搜索无该账号推文 +4 分。 |
-| 6 | **关注/粉丝比与增长** | 0-8 | 关注/粉丝比 >10:1 +4 分（疑似关注轰炸）；粉丝中机器人占比 >30% +3 分；关注列表含 >50% 被封账号 +2 分。 |
-| 7 | **Premium 会员等级** | 0-8 | Premium Basic（$3/月）0 分；Premium（$8/月）-2 分信任加分；Premium+（$200/月）-5 分信任加分；粉丝>10K 但未开通 Premium +2 分。 |
-| 8 | **内容多样性与活跃度** | 0-12 | 单一 NSFW 内容 >80% +5 分；原创与搬运比 <1:3 +4 分；60% 推文在 2 小时内发布 +3 分；>70% 推文互动低（<5 赞）+3 分。 |
-| 9 | **禁止内容零触碰** | 0-25 | Tier 1 违规（非合意/未成年人/性暴力/剥削）1 条 +20 分，≥3 条 +25 分；Tier 2 边界内容（暧昧/暗示）1-2 条 +5 分，≥3 条 +10 分。 |
+| 1 | **ACC 计划合规** | 0-15 | 主时间线成人/敏感内容占比 >20% 且无 ACC 计划成员证据 +10（2026 年强制）；占比 ≤20% 计 0。 |
+| 2 | **ACC 三级标记合规** | 0-15 | 成人关键词 + 媒体 + 未标记 Sensitive Media，每条 +3（上限 15）。 |
+| 3 | **API 自动回复合规** | 0-12 | API v2 2026 限制：自动回复必须提及/引用原作者（未提及 +3/次）；同一推文被回复 >10 次 +2/条；回复内容重复 >5 条 +3。 |
+| 4 | **IP/网络环境合规** | 0-10 | 数据中心 IP（AWS/阿里云/腾讯云/Tor）+5；频繁 IP 切换（>5 个/周）+3；住宅 IP 正常。 |
+| 5 | **Shadowban 隐形限制** | 0-10 | 搜索用户名无推文显示 +6；回复深度 <3 层 +3；印响数骤降 >50% +3；特定搜索无该账号推文 +4（需实测，注意查看者敏感过滤对照组）。 |
+| 6 | **关注/粉丝比与增长** | 0-8 | 关注/粉丝比 >10:1 +4；粉丝机器人占比 >30% +3；关注列表 >50% 被封 +2。 |
+| 7 | **Premium 会员等级** | 0-8 | Premium Basic 0；Premium -2 信任加分；Premium+ -5；粉丝 >10K 未开通 +2（蓝标推断 Premium）。 |
+| 8 | **内容多样性与活跃度** | 0-12 | 单一 NSFW 占比 >80% +5；原创/搬运比 <1:3 +4；60% 推文在 2 小时内 +3；>70% 互动低（<5 赞，仅 ≥5000 粉） +3。 |
+| 9 | **禁止内容零接触** | 0-25 | Tier 1（非合意/未成年/性暴力/血腥，需语境判定）1 条 +20、≥2 条 +25；Tier 2 边界 1-2 条 +5、≥3 条 +10。 |
 
-**评级标准**：总分 ≥60 = 高风险（红）；30-59 = 中等风险（橙）；<30 = 低风险（绿）。
-
-详细评分规则见 `risk_engine.py` 中的 `_get_dimensions_v4()` 方法。
-
-## 适用场景
-- 评估某个 X 成人内容账号的长期存活风险
-- 研究/对照打分机制（临时测试账号）
-- 批量监控多个账号（定时任务 + 邮件通知）
+等级：总分 ≥60 = 高风险（红）；30-59 = 中风险（黄）；<30 = 低风险（绿）。
+详细实现见随包 `risk_engine.py` 的 `_get_dimensions_v4()`。
 
 ## 前置依赖
-- **Node + Playwright**（走真实浏览器 DOM，绕过 GraphQL 401 拦截）：`npm i playwright` 且已 `npx playwright install chromium`
-- **Python 3.13** + 项目内 `risk_engine.py`（核心评分引擎，风险分逻辑）
-- **登录态 cookie 文件**：任意有效 X 登录态的 cookies JSON（Cookie-Editor 导出格式：`[{name,value,domain,path,expirationDate,...}]`）。读公开推文只需任意一个有效登录态，不需要目标账号自己的 cookie。
 
-## 工作流（三步走）
+- **Node + Playwright**：`npm i playwright`；支持 `channel: 'msedge'/'chrome'`（用系统浏览器可免 `npx playwright install chromium`）。
+- **Python 3.10+**：随包 `risk_engine.py`（核心引擎，需复制到项目目录）与 `scripts/*.py`。
+- **登录态 cookie JSON**（Cookie-Editor 导出格式 `[{name,value,domain,path,expirationDate,...}]`），放 `<workspace>/conny_cookies.json`；任意有效 X 登录态即可，不需要目标账号本人的 cookie。
+- **fxTwitter 公开资料** `work/fx_<handle>.json`：`curl https://api.fxtwitter.com/<handle>`，用于生成 profile（粉丝/认证/加入时间）与推文总数。
 
-### Step 1 — 抓取推文 + 转贴识别
+## 工作流（三步走 + 搜索实测）
 
-**方式A：标准 Playwright DOM 抓取**（推荐，适用于首次评估）
+### Step 1 抓取 + 合并转帖分类
+
 ```bash
 cd <项目目录>
 node scripts/fetch_x_tweets.js <Handle> [workspace_dir] [cookie_file]
+python scripts/merge_timelines.py <Handle> [workspace_dir] [fx_json]
 ```
-- 启动无头 Chromium + 注入 cookie → 打开 `https://x.com/<Handle>`
-- 滚动页面**增量去重收集**推文（X 无限滚动会卸载视口外节点，必须增量收集，不能最后一次性提取）
-- 自动点击「显示敏感内容」按钮展开被折叠的媒体（否则 `img` 不在 DOM，会漏判含成人媒体但未标注的推文）
-- 输出：`<workspace>/data/<handle_lower>_tweets.json`（每条含 text/time/likes/retweets/hasMedia/possibly_sensitive）+ `<handle_lower>_profile.json`（name/bio/stats）
 
-**方式B：Syndication API + Playwright 逐个检查转贴**（适用于已有 syndication 数据或需精确识别"已转帖"）
-```bash
-cd <项目目录>
-python batch_fetch_retweets.py  # 批量处理已配置的账号
-# 或
-python parse_retweets_from_raw.py  # 从已有 tweets.json 的 raw 字段解析"已转帖"标记
-```
-- 从 `syndication_raw_<handle>.txt` 解析推文列表
-- 用 Playwright 逐个访问每条推文 URL，提取"已转帖/Reposted" DOM 标记
-- **输出每条推文的 `is_retweet`、`retweet_author` 字段**，供评分引擎检测
+- `fetch_x_tweets.js`：启动无头 Chromium/Edge + 注入 cookie → 打开 `https://x.com/<Handle>`；**自动点击“此个人资料可能包含潜在的敏感内容”警告门**（`button[data-testid="empty_state_button_text"]`）；滚动增量去重收集（连续 5-8 次无新增停止）；自动展开被折叠的敏感媒体；逐条提取 ID/时间/点赞/转帖/阅读/媒体/敏感标记。输出 `data/<handle>_deep_main.json` 与 `data/<handle>_deep_replies.json`。
+- `merge_timelines.py`：**主时间线全部文章计入本账号**（作者 != handle 即本账号的转帖）；回复标签页只保留作者 == handle 的回复；去重（主时间线优先）；输出 `data/<handle>_tweets.json` + `data/<handle>_profile.json`（由 fxTwitter 资料生成）。
 
-**方式C：从已有 tweets.json raw 字段解析**（最快，适用于已有原始数据）
-```bash
-python parse_retweets_from_raw.py
-```
-- X 的 DOM 抓取结果中 `raw` 字段已包含"已转帖"文字标记
-- 正则匹配 `^(.+?)\s+已转帖\s+(.+?)\s+@\w+` 和 `^(.+?)\s+Reposted\s+(.+?)\s+@\w+`
-- 补充 `is_retweet`、`retweet_author_name`、`retweet_type` 字段到每条推文
-- ⚠️ **必须在评分前运行**，否则评分引擎无法识别转贴
+### Step 2 跑风险评分
 
-### Step 2 — 跑风险评分
 ```bash
-cd <项目目录>   # 必须含 risk_engine.py
+cd <项目目录>   # 必须含 risk_engine.py（复制自技能包根目录）
 python scripts/assess_x_account.py <Handle> [workspace_dir]
 ```
-- 读取 tweets + profile → 适配成 `risk_engine.RiskEngine.assess_account()` 的入参
-- 关键适配：含媒体的推文在 `raw` 字段追加 ` https://x.com/media_item`，供引擎判定「成人内容+媒体→需标记 Sensitive Media」
-- ⚠️ **必须确保 tweets 含 `is_retweet` 字段**：否则评分引擎的维度3（行为真实性）7项转贴检测全部失效
-  - 如 tweets.json 无 `is_retweet`，先运行 `parse_retweets_from_raw.py` 或 `batch_fetch_retweets.py` 补充
-- 输出：`<workspace>/data/<handle_lower>_risk_v3.json`（score / level / dimensions{6维度 risk_score,max_risk,issues} / meta / tweets）
 
-### Step 3 — 生成 HTML 报告
+- 可选搜索证据：`data/<handle>_search_evidence.json`（见 Step 4），提供 `search_autocomplete_absent` / `user_search_absent` / `from_search_empty` / `from_search_works` / `impersonators` 字段。
+- 输出：`data/<handle>_risk_v3.json`（score/level/dimensions 9 维度/meta/tweets）。
+
+### Step 3 生成 HTML 报告
+
 ```bash
-python scripts/gen_report.py <workspace>/data/<handle_lower>_risk_v3.json [output.html]
+python scripts/gen_report.py <workspace>/data/<handle>_risk_v3.json [output.html]
 ```
-- 复用 `gen_report()`：总分圆环 + 6 维度卡片（含扣分标准与你的情况）+ 一致性校验（总分=各维度之和）
-- 颜色映射（风险分逻辑）：高风险红 `#e74c3c` / 中等橙 `#f39c12` / 低绿 `#2ecc71`
 
-## 评分引擎 6 维度（风险分 / 满分）
+- v4 九维度报告：总分圆环 + 9 维度卡片（扣分标准/你的情况/改进建议）+ 关键发现（数据驱动）+ 推文样本表 + 数据覆盖说明。
 
-**优先级排序**（按被封概率从高到低）：
+### Step 4 搜索可见性实测（建议，供维度 5）
 
-1. **行为真实性 15** — 含7项转贴相关检测 + 自动化工具/频率/内容重复/密集发布/时间均匀度检测
-2. **内容标记合规 30** — 每条未标记成人内容推文 +3
-3. **禁止内容零触碰 25** — Tier1违规 +20/条；Tier2边界 +5/条
-4. **账号环境 10** — 新号(粉丝<100) +3；异常登录 +3；脏设备/共享IP +2；未绑手机 +2；Profile/Banner含NSFW关键词+媒体 +2
-5. **举报历史 5** — 举报>5 +3；警告 +2；违规≥3 +5
-6. **其他合规 5** — 每类违规 +1
+```bash
+node scripts/search_visibility_test.js <Handle> [workspace_dir] [cookie_file]
+node scripts/auto_retest.js <Handle> [workspace_dir] [cookie_file]
+```
 
-### 维度3（行为真实性）7项转贴相关检测详情
-
-| # | 检测项 | 扣分 | 说明 |
-|---|--------|------|------|
-| 信号1 | NSFW转贴占比 >50% | +3分 | 转贴中≥3条且成人内容占比>50% → 疑似NSFW搬运号 |
-| 信号2 | 转贴占比 >80% | +5分 | 原创<20% → 疑似纯搬运号 |
-| 信号3 | NSFW标签高度集中 | +2分 | 转贴中≥3条含#nsfw/#18+/#成人等标签 |
-| 信号4 | 高转贴+低互动 | +2分 | 转贴>50%且平均点赞<5且推文≥10条 → 低质搬运 |
-| 信号5 | 硬转推占比分级 | >50%+3分；>80%+5分 | 新版X"已转帖"≠原创内容 |
-| 信号6 | 时间间隔均匀度 | CV<0.05 +2分 | 程序化发推/自动回复 |
-| 信号7 | 自动化工具信号 | +5分/种 | 自动点赞/关注/批量操作/互赞等 |
-
-### 补充行为检测（非转贴相关）
-
-| 检测项 | 扣分 | 说明 |
-|--------|------|------|
-| 内容重复率 >30% | +8分上限 | 重复推文比例过高 |
-| 24h密集发布 >50% | +5分上限 | 单日推文占比过高 |
-| 发帖频率突增 >2倍 | +5分上限 | 与历史数据对比 |
-
-### 评分逻辑要点
-
-- **转贴≠原创**：新版X的"已转帖"标记必须被识别，不能计入原创推文
-- **转贴行为模式**：高转贴占比 + 低互动 + NSFW集中 = 典型搬运号特征
-- **维度满分封顶**：维度3行为真实性满分15分，各信号累加后取min(累加值, 15)
+- 自动补全：检查是否出现“前往 @handle”直达入口；用户搜索：检查精确真号是否在结果中；`from:` 搜索：有结果 = 未被推文搜索限流。
+- **对照组**：`from:` 零结果可能是查看者“隐藏敏感内容”设置所致（实测所有敏感账号 from: 均为空），必须用其他账号对照，不能直接判定 shadowban。
+- 结果写入 `data/<handle>_search_evidence.json` 后重跑 Step 2。
 
 ## 重要坑位（详见 references/LESSONS.md）
-1. **GraphQL API 持续 401**：页面能登录 ≠ API 能调。X 对第三方登录态的 GraphQL 调用做了拦截。→ 改走 Playwright DOM 路线（真实浏览器不受限）。
-2. **`queryId` 位置变了**：从 `responsive-web/client-web-*.js` 迁到 `x-web/x-web/entry-client-logged-out-*.js`，且初始 3 个 JS（vendor/main/zh）不含，要从 `main.js` 内搜 `operationName:"UserTweets"` 提取。结论：别折腾 GraphQL，直接用 DOM。
-3. **中文 X 用「关注者」不用「粉丝」**：profile 解析正则必须匹配 `关注者|Followers|粉丝`，否则 `followers` 误判 0、`following` 被覆盖 → 账号环境维度虚扣分。
-4. **无限滚动丢数据**：最后一次性 `querySelectorAll('article')` 只能拿到视口内节点（X 卸载机制）。→ 滚动时增量去重 `Map`，停止条件 `连续5次无新增`。
-5. **敏感媒体折叠**：未点击「显示」时 `img` 不在 DOM，`hasMedia` 误判 false → 漏扣标记分。→ 提取时自动点击展开按钮。
-6. **邮件发送**：QQ 邮箱 MCP 的 `alias_id` 传字符串（非对象），`to` 传数组；正文别重复粘贴导致请求超长。
-7. **硬转推检测必须逐条访问**：Syndication API的`retweeted`字段表示当前用户是否转推，不是这条本身是否是转推。新版硬转推无"RT @"前缀、无`retweeted_status`嵌套字段。→ 必须Playwright逐个访问每条推文URL提取"已转帖/Reposted"DOM标记。
-8. **两组Cookie轮换仍为空壳**：X对无头浏览器的SSR限制主要基于Cloudflare指纹或UA，而非Cookie。→ 放弃主页DOM抓取，改用Syndication API抓列表+Playwright逐个访问推文页面。
-9. **`is_retweet` 字段缺失 = 评分引擎转贴检测全部失效**： tweets.json 只有 text/time/likes/hasMedia，没有 is_retweet → 维度3行为真实性维度得0分（误判为低风险）。→ **必须**在评分前运行 parse_retweets_from_raw.py 或 batch_fetch_retweets.py 补充 is_retweet 字段。实测 @dangao0709 从40分（无转贴）跳到55分（含转贴，+15分！）。
+
+1. **敏感个人资料警告门**：不点击“是，查看个人资料”，`article` 为 0，抓取看似成功实则为空。
+2. **转帖识别**：“已转帖”横幅不在正文 `div[lang]` 中；主时间线里作者 != 本账号 = 本账号转帖（漏识别会导致搬运号分数严重低估）。
+3. **媒体检测**：不能只查 `img[data-testid="tweetPhoto"]`（头像也是 pbs.twimg.com 图片）；用 `div[data-testid="tweetPhoto"/"tweetVideo"]` + `img[src*="/media/"]`，排除 `profile_images`。
+4. **互动数字解析**：X 把回复/转帖/赞/书签/阅读放在同一个 aria-label，必须按关键词分别提取，不能取第一个数字。
+5. **Tier 1 语境化**：灰色词（萝莉/正太/cp/强迫/下药/未成年/强奸）在成人圈常见于角色扮演、自嘲、标签语境，直接命中会大量误报。
+6. **小号公平性**：<5000 粉账号互动低属正常，低互动惩罚仅适用大号。
+7. **GraphQL API 持续 401**：页面能登录 ≠ API 能调，直接走 Playwright DOM。
+8. **无限滚动丢节点**：必须增量去重收集（`Map`，key=id 或 time+text），不能最后一次性提取。
+9. **中文资料页**：用「关注者/正在关注」正则，否则 followers/following 解析错乱。
+10. **Cookie 有效性**：过期/被吊销会触发登录墙（脚本检测后 exit 3），需重新导出。
 
 ## 注意事项
-- cookie 过期：Cookie-Editor 导出的 `expirationDate` 是 Unix 秒。本地未过期不代表服务端未吊销，抓取前应验证页面是否出现登录墙（脚本已内置检测，出现则 exit 3）。
-- 临时测试账号不触发邮件通知；正式监控账号需 ≥60 分才发邮件。
-- 数据落盘在 `<workspace>/data/`，报告 HTML 在项目根目录。
+
+- 临时测试账号不触发邮件通知；正式监控账号 ≥60 分才发邮件（如接 QQ 邮箱 MCP，`alias_id` 传字符串、`to` 传数组）。
+- 数据落盘在 `<workspace>/data/`，报告 HTML 默认输出到同目录，可指定输出路径。
+- cookie 属敏感凭据：仅本地使用，不要写入报告/交付物。
