@@ -92,6 +92,7 @@ raw_data = {
         "followers_count": followers,
         "following_count": following,
         "statuses": profile_raw.get('statuses', 0),
+        "joined": profile_raw.get('joined', ''),
         "is_sensitive": False,
         "is_blue_verified": bool(profile_raw.get('verified', False)),
         "sensitive_profile_warning": bool(profile_raw.get('sensitive_profile_warning', False)),

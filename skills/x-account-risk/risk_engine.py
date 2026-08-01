@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""X 账号风险评分引擎 v4.7（11 维度，风险分逻辑：分数越高风险越大）。
+"""X 账号风险评分引擎 v4.8（11 维度，风险分逻辑：分数越高风险越大）。
 
 维度总分上限 = 142（15+15+12+10+10+8+8+12+25+15+12），归一化到 0-100。
 等级：>=60 高风险（红） / 30-59 中风险（黄） / <30 低风险（绿）。
@@ -57,6 +57,8 @@ TIER2_KEYWORDS = STRONG_ADULT + [
 SURVIVAL_BAN_KEYWORDS = [
     "复活版", "重生号", "重生", "被冻", "冻结",
     "重开", "復活", "旧号", "被盗号", "号被盗",
+    # 第二轮校准（v4.8）：恢复“被封”类精确模式（避免裸词“被封”误报 QQ 封号）
+    "大号被封", "老号被封", "账号被封", "号被封了", "秽土转生", "转生",
 ]
 # 性交易/招嫖 + 商业变现信号（A 级=露骨明示，必须扣分）
 SURVIVAL_SW_KEYWORDS = [
@@ -263,9 +265,18 @@ class RiskEngine:
             for kw in SURVIVAL_MINOR_MISJUDGE_KEYWORDS:
                 if kw in txt and kw not in _minor_hits:
                     _minor_hits.append(kw)
-        # 校准（v4.7）：160 个存活样本中露骨变现组与无变现组中位存续年限无差异，
-        # 变现信号对“存续”预测力弱，上限 7 -> 5，权重让给平台惩罚状态
-        _survival = min(8, len(_ban_hits) * 4) + min(5, len(_sw_hits) * 3) + (5 if _dox_hits else 0)
+        # 校准（v4.8）：第二轮 11 vs 149 对比推翻 v4.7 结论——
+        # 重生史组 bio 露骨变现比例 55% vs 无史组 23%（+0.31），变现号更容易被封，上限恢复 7
+        _survival = min(8, len(_ban_hits) * 4) + min(7, len(_sw_hits) * 3) + (5 if _dox_hits else 0)
+        # 新号信号：注册 <1 年且无蓝标（重生号显著更年轻：中位 1 年 vs 4 年）
+        _joined = profile.get("joined") or ""
+        _joined_year = None
+        _jm = re.search(r"\b(19|20)\d{2}\b", _joined)
+        if _jm:
+            _joined_year = int(_jm.group(0))
+        _is_new = _joined_year is not None and (2026 - _joined_year) < 1
+        if _is_new and not (profile.get("is_blue_verified") or profile.get("verified")):
+            _survival += 2
         if _minor_hits:
             _survival += 4
         if _impersonator_count >= 6:
@@ -286,6 +297,8 @@ class RiskEngine:
             _surv_issues.append(f"检测到幼态/未成年误判信号：{'、'.join(_minor_hits[:4])}（幼态人设+性话题=平台误杀高发区，需人工复核，+4）")
         if _impersonator_count:
             _surv_issues.append(f"发现 {_impersonator_count} 个仿冒/近似账号（{'、'.join((extra_data.get('impersonators') or [])[:6])}），仿冒生态侵蚀粉丝，+{2 if _impersonator_count >= 3 else 4 if _impersonator_count >= 6 else 0}")
+        if _is_new and not (profile.get("is_blue_verified") or profile.get("verified")):
+            _surv_issues.append(f"注册不足 1 年且无认证（新号，重生号显著更年轻：中位 1 年 vs 4 年，+2）")
         if not _surv_issues:
             _surv_issues.append("未检测到封禁史/性交易/隐私侵害信号")
 

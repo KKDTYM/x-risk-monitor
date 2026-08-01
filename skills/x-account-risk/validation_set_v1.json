@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "generated_at": "2026-08-01T21:44:15",
+  "dead_accounts": [
+    {
+      "handle": "huahua0371_",
+      "status": "dead",
+      "detected_at": "2026-08-01T21:44:15",
+      "sources": [
+        {
+          "source_handle": "huahua0371",
+          "source_name": "花花二代目",
+          "bio_context": "大号 @huahua0371_ 无了 🚪40 电报 zfb口令红包"
+        }
+      ]
+    },
+    {
+      "handle": "jiajia99323",
+      "status": "dead",
+      "detected_at": "2026-08-01T21:44:15",
+      "sources": [
+        {
+          "source_handle": "jiajia2475",
+          "source_name": "一点点",
+          "bio_context": "68🛰，直接发口令，私信～@jiajia99323，看到都会回，可1可0，情绪稳定，住广州，定期会去上海，169～56女音女心女装生活，分享日常，不定期更新视频，现在关注就是老粉"
+        }
+      ]
+    },
+    {
+      "handle": "mozidoum",
+      "status": "dead",
+      "detected_at": "2026-08-01T21:44:15",
+      "evidence": "mozi828 简介自述：老号被封了@mozidoum（现居哈尔滨）——确凿封号样本",
+      "sources": [
+        {
+          "source_handle": "mozi828",
+          "source_name": "啤酒沫子🍥（srs术后）",
+          "bio_context": "04年丨四年hrt术后丨4i攻或受丨对于小南梁是s （就是喜欢欺负同类）‖ 在哈尔滨上大学 丨提供南梁医美指导，srs咨询 | 老号被封了@mozidoum（现在在哈尔滨）"
+        }
+      ]
+    },
+    {
+      "handle": "tyymmaa",
+      "status": "dead",
+      "detected_at": "2026-08-01T21:44:15",
+      "sources": [
+        {
+          "source_handle": "tyyemma",
+          "source_name": "去势药娘 Emma",
+          "bio_context": "#可约~也可以接1对1视频#  QQ :1638041056    好友门槛红包100送视频  VX微信 :emmacdts     唯一小号@tyymmaa"
+        }
+      ]
+    },
+    {
+      "handle": "were_formerly",
+      "status": "dead",
+      "detected_at": "2026-08-01T21:44:15",
+      "sources": [
+        {
+          "source_handle": "UaU_cr",
+          "source_name": "UaU",
+          "bio_context": "愚蠢的U，秽土转生 前世@Were_formerly"
+        }
+      ]
+    }
+  ],
+  "rebirth_history_alive": [
+    {
+      "handle": "kaixintangtang",
+      "evidence": "简介“复活版/重生号”"
+    },
+    {
+      "handle": "xieshujingvlog",
+      "evidence": "简介“原3万粉丝账号被冻，这是新号”"
+    },
+    {
+      "handle": "wuuuuuucy",
+      "evidence": "推文自述被冻结→申诉→粉丝清零→退圈回归"
+    },
+    {
+      "handle": "_xingxiyue",
+      "evidence": "引擎检测到“重生”信号"
+    },
+    {
+      "handle": "dangao0709",
+      "evidence": "引擎检测到“重生”信号"
+    },
+    {
+      "handle": "sissyyouzimiao",
+      "evidence": "简介“第三次重生了”"
+    },
+    {
+      "handle": "ultimatesexy15",
+      "evidence": "简介“秽土转生新号”"
+    },
+    {
+      "handle": "sunny31059",
+      "evidence": "简介“新号重生中”"
+    },
+    {
+      "handle": "MissClaireShort",
+      "evidence": "简介“复活版”"
+    },
+    {
+      "handle": "shuizhizi666",
+      "evidence": "简介“8万粉大号被封，防丢失小号”"
+    },
+    {
+      "handle": "mary0037211",
+      "evidence": "简介“号被封，已隐退”"
+    },
+    {
+      "handle": "mozi828",
+      "evidence": "简介“老号被封了@mozidoum”"
+    }
+  ],
+  "note": "dead=已探测 404；rebirth=自述曾被平台处理（含“老号被封”“大号被封”“第三次重生”“秽土转生”等表述）"
+}
