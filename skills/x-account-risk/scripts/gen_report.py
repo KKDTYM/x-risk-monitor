@@ -234,9 +234,20 @@ def gen_report(data):
         review_items.append(f"<li><strong>疑似开盒/隐私泄露：</strong>{esc(dh)}——涉他人真实信息</li>")
     for im in meta.get("impersonators") or []:
         review_items.append(f"<li><strong>仿冒号：</strong>@{esc(im)}——注意甄别，防粉丝被骗</li>")
+    review_state = ""
+    try:
+        _rv_path = os.path.join(os.path.dirname(sys.argv[1]), "review", handle.lstrip("@").lower() + ".json")
+        if os.path.exists(_rv_path):
+            _rv = json.load(open(_rv_path, encoding="utf-8"))
+            _items = _rv.get("items", [])
+            _done = sum(1 for it in _items if it.get("verdict") not in (None, "pending"))
+            _state = "已复核" if _items and _done == len(_items) else "待复核"
+            review_state = f"<p class='review-state'><strong>复核状态：{_state}</strong>（{_done}/{len(_items)} 条已判定）</p>"
+    except Exception:
+        pass
     review_html = ""
     if review_items:
-        review_html = ('<div class="review-box"><h3>⚠️ 待人工复核清单</h3><ul>'
+        review_html = ('<div class="review-box"><h3>⚠️ 待人工复核清单</h3>' + review_state + '<ul>'
                        + "".join(review_items) + "</ul></div>")
 
     html_doc = f"""<!DOCTYPE html>

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""X 账号风险评分引擎 v4.8（11 维度，风险分逻辑：分数越高风险越大）。
+"""X 账号风险评分引擎 v4.9（11 维度，风险分逻辑：分数越高风险越大）。
 
 维度总分上限 = 142（15+15+12+10+10+8+8+12+25+15+12），归一化到 0-100。
 等级：>=60 高风险（红） / 30-59 中风险（黄） / <30 低风险（绿）。
@@ -12,6 +12,13 @@ v4.7 变更：
 - marking 平台标记率参照：平台整体标记率 <10% 时折算 50%（平台尺度）
 - 变现信号权重下调（校准：存活样本中露骨变现组与无变现组存续年限无差异）
 - 多语言词库（英文关键词）
+
+v4.9 变更（train/test 校准证据）：
+- 358 样本 train/test 划分：训练 AUC 0.821 -> 测试 AUC 0.560（过拟合）
+- 移除“注册<1年新号 +2”（age 特征测试集失效）
+- 变现权重回退上限 5（v4.8 的 7 为训练集调参，测试集不支持）
+- marking 折算收紧：平台标记率 <10% 且 NSFW 占比 <30% 才打折
+- 复核落盘：data/review/<handle>.json 记录人工复核状态
 """
 import re
 from datetime import datetime
@@ -265,18 +272,9 @@ class RiskEngine:
             for kw in SURVIVAL_MINOR_MISJUDGE_KEYWORDS:
                 if kw in txt and kw not in _minor_hits:
                     _minor_hits.append(kw)
-        # 校准（v4.8）：第二轮 11 vs 149 对比推翻 v4.7 结论——
-        # 重生史组 bio 露骨变现比例 55% vs 无史组 23%（+0.31），变现号更容易被封，上限恢复 7
-        _survival = min(8, len(_ban_hits) * 4) + min(7, len(_sw_hits) * 3) + (5 if _dox_hits else 0)
-        # 新号信号：注册 <1 年且无蓝标（重生号显著更年轻：中位 1 年 vs 4 年）
-        _joined = profile.get("joined") or ""
-        _joined_year = None
-        _jm = re.search(r"\b(19|20)\d{2}\b", _joined)
-        if _jm:
-            _joined_year = int(_jm.group(0))
-        _is_new = _joined_year is not None and (2026 - _joined_year) < 1
-        if _is_new and not (profile.get("is_blue_verified") or profile.get("verified")):
-            _survival += 2
+        # 校准（v4.9）：train/test 划分显示训练 AUC 0.821 -> 测试 AUC 0.560（过拟合）。
+        # 变现上限回退保守值 5；移除新号 +2（age 特征测试集失效）。
+        _survival = min(8, len(_ban_hits) * 4) + min(5, len(_sw_hits) * 3) + (5 if _dox_hits else 0)
         if _minor_hits:
             _survival += 4
         if _impersonator_count >= 6:
@@ -297,8 +295,6 @@ class RiskEngine:
             _surv_issues.append(f"检测到幼态/未成年误判信号：{'、'.join(_minor_hits[:4])}（幼态人设+性话题=平台误杀高发区，需人工复核，+4）")
         if _impersonator_count:
             _surv_issues.append(f"发现 {_impersonator_count} 个仿冒/近似账号（{'、'.join((extra_data.get('impersonators') or [])[:6])}），仿冒生态侵蚀粉丝，+{2 if _impersonator_count >= 3 else 4 if _impersonator_count >= 6 else 0}")
-        if _is_new and not (profile.get("is_blue_verified") or profile.get("verified")):
-            _surv_issues.append(f"注册不足 1 年且无认证（新号，重生号显著更年轻：中位 1 年 vs 4 年，+2）")
         if not _surv_issues:
             _surv_issues.append("未检测到封禁史/性交易/隐私侵害信号")
 
@@ -371,11 +367,13 @@ class RiskEngine:
         _mark_raw = min(15, len(media_unmarked) * 3)
         _mark_score = _mark_raw
         _mark_issues = [f"{len(media_unmarked)} 条含成人关键词媒体未标记 Sensitive Media（每条 +3）"]
-        if media_unmarked and _platform_mark_rate < 0.10:
+        # marking 折算收紧（v4.9）：平台标记率 <10% 且 NSFW 占比 <30% 才视为“平台认可的擦边尺度”
+        _nsfw_share = (len(flagged) + len(strong_hits) + len(soft_hits)) / n_all
+        if media_unmarked and _platform_mark_rate < 0.10 and _nsfw_share < 0.30:
             _mark_score = round(_mark_raw * 0.5)
-            _mark_issues.append(f"平台整体标记率仅 {_platform_mark_rate*100:.1f}%（<10%，平台认可的擦边尺度），按 50% 折算（{_mark_raw} -> {_mark_score}）")
+            _mark_issues.append(f"平台整体标记率仅 {_platform_mark_rate*100:.1f}%（<10%）且 NSFW 占比 {_nsfw_share*100:.0f}%（<30%，平台认可的擦边尺度），按 50% 折算（{_mark_raw} -> {_mark_score}）")
         elif media_unmarked:
-            _mark_issues.append(f"平台整体标记率 {_platform_mark_rate*100:.1f}%（>=10%），漏标按正常规则扣分")
+            _mark_issues.append(f"平台整体标记率 {_platform_mark_rate*100:.1f}% 或 NSFW 占比 {_nsfw_share*100:.0f}%（>=30%，露骨内容不享受折算），漏标按正常规则扣分")
         else:
             _mark_issues = [f"{len(flagged)}/{len(tweets)} 条推文已被 X 标记敏感，无漏标"]
 

@@ -153,6 +153,37 @@ result["meta"] = {
 }
 result["tweets"] = recent
 
+# ---- 复核落盘（v4.9）：存疑条目写入 data/review/<handle>.json ----
+_review_items = []
+_prohib = result["dimensions"].get("prohibited", {})
+for t in _prohib.get("tier1_details", []):
+    _review_items.append({"type": "Tier1", "text": t, "verdict": "pending"})
+_surv = result["dimensions"].get("survival", {})
+for mh in _surv.get("minor_hits", []):
+    _review_items.append({"type": "幼态/未成年误判", "text": mh, "verdict": "pending"})
+for dh in _surv.get("dox_hits", []):
+    _review_items.append({"type": "开盒/隐私", "text": dh, "verdict": "pending"})
+_review_dir = os.path.join(DATA, 'review')
+if _review_items:
+    os.makedirs(_review_dir, exist_ok=True)
+    _rv_path = os.path.join(_review_dir, f'{LOWER}.json')
+    _old_review = {}
+    if os.path.exists(_rv_path):
+        try:
+            _old_review = json.load(open(_rv_path, encoding='utf-8'))
+        except Exception:
+            pass
+    json.dump({
+        "handle": HANDLE,
+        "evaluated_at": _now,
+        "status": "pending",
+        "items": _review_items,
+        "note": "verdict: 实锤 / 角色扮演 / 比喻 / 无法判断；AI 人工复核后回写",
+    }, open(_rv_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+    result["meta"]["review_pending"] = True
+else:
+    result["meta"]["review_pending"] = False
+
 out_path = os.path.join(DATA, f'{LOWER}_risk.json')
 json.dump(result, open(out_path, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
 
