@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""X 账号风险评分引擎 v4.4（11 维度，风险分逻辑：分数越高风险越大）。
+"""X 账号风险评分引擎 v4.5（11 维度，风险分逻辑：分数越高风险越大）。
 
 维度总分上限 = 142（15+15+12+10+10+8+8+12+25+15+12），归一化到 0-100。
 等级：>=60 高风险（红） / 30-59 中风险（黄） / <30 低风险（绿）。
@@ -49,12 +49,16 @@ SURVIVAL_BAN_KEYWORDS = [
     "复活版", "重生号", "复活", "重生", "被冻", "冻结",
     "重开", "復活", "旧号", "被盗号", "号被盗",
 ]
-# 性交易/招嫖 + 商业变现信号：平台重点打击 + 法律风险面
+# 性交易/招嫖 + 商业变现信号（A 级=露骨明示，必须扣分）
 SURVIVAL_SW_KEYWORDS = [
     "接线下", "可约", "全国可飞", "全国可✈", "莞式", "报价",
     "课表", "口令", "好友位", "私信解锁", "涩涩基地", "包夜", "线上一对一",
-    "领课表", "接单", "约炮", "门槛", "可线下", "🉑线下", "付费", "有偿",
-    "包月", "订阅", "打赏", "图包", "电报", "加群", "淘宝", "店铺", "发售",
+    "领课表", "接单", "约炮", "门槛", "付费", "有偿", "包月", "订阅", "打赏",
+    "图包", "淘宝", "店铺", "发售", "卖淫", "嫖", "下单",
+]
+# 隐晦引流词（B 级=可辩解，不扣分，仅提示）
+SURVIVAL_IMPLICIT_KEYWORDS = [
+    "电报", "tg", "加群", "可线下", "🉑线下", "私信", "找我", "加我", "解锁", "购买", "价格",
 ]
 # 隐私侵害信号：泄露他人姓名/住址等（开盒）
 SURVIVAL_DOX_KEYWORDS = ["地址是", "家庭住址", "住址"]
@@ -67,12 +71,15 @@ LIFE_KEYWORDS = [
     "头疼", "感冒", "生病", "vlog", "心情", "吐槽", "生日", "放假", "回家",
     "剪头发", "逛街", "喝酒", "唱歌",
 ]
-# 卖货/引流关键词：营销号特征（统计非转帖内容中的占比）
+# 卖货/引流关键词（A 级=露骨明示，计入营销号形态）
 SELL_KEYWORDS = [
-    "私信", "加我", "找我", "电报", "tg", "口令", "解锁", "课表", "门槛",
-    "好友位", "报价", "下单", "购买", "发售", "店铺", "淘宝", "有偿", "付费",
-    "包月", "订阅", "打赏", "图包", "加群", "涩涩", "接单", "可约", "线下",
-    "价格", "莞式",
+    "口令", "课表", "门槛", "好友位", "报价", "下单", "发售", "店铺",
+    "淘宝", "有偿", "付费", "包月", "订阅", "打赏", "图包", "涩涩", "接单",
+    "可约", "莞式", "私信解锁", "线上一对一", "接线下", "包夜", "约炮",
+]
+# 隐晦引流词（B 级=不扣分，仅提示）
+SELL_IMPLICIT_KEYWORDS = [
+    "电报", "tg", "加群", "私信", "找我", "加我", "解锁", "可线下", "🉑线下", "购买", "价格",
 ]
 
 
@@ -202,6 +209,7 @@ class RiskEngine:
         _ban_hits = []
         _sw_hits = []
         _dox_hits = []
+        _impl_hits = []
         for txt in _all_texts:
             for kw in SURVIVAL_BAN_KEYWORDS:
                 if kw in txt and ("无" + kw) not in txt and ("不" + kw) not in txt and kw not in _ban_hits:
@@ -214,6 +222,9 @@ class RiskEngine:
                     continue
                 if kw in txt:
                     _sw_hits.append(kw)
+            for kw in SURVIVAL_IMPLICIT_KEYWORDS:
+                if kw in txt and not any(a in txt for a in SURVIVAL_SW_KEYWORDS) and kw not in _impl_hits:
+                    _impl_hits.append(kw)
             for kw in SURVIVAL_DOX_KEYWORDS:
                 if kw in txt and ("无" + kw) not in txt and ("不" + kw) not in txt and kw not in _dox_hits:
                     _dox_hits.append(kw)
@@ -224,6 +235,8 @@ class RiskEngine:
             _surv_issues.append(f"检测到封禁/重生史信号：{'、'.join(_ban_hits[:6])}（账号已被平台处理过，再封优先级高，+{min(8, len(_ban_hits) * 4)}）")
         if _sw_hits:
             _surv_issues.append(f"检测到性交易/商业变现信号：{'、'.join(_sw_hits[:8])}（平台重点打击 + 法律风险，+{min(7, len(_sw_hits) * 3)}）")
+        if _impl_hits:
+            _surv_issues.append(f"检测到隐晦引流词（未扣分，仅提示）：{'、'.join(_impl_hits[:6])}")
         if _dox_hits:
             _surv_issues.append(f"检测到疑似隐私泄露/开盒信号：{'、'.join(_dox_hits[:4])}（涉他人真实信息，+5）")
         if not _surv_issues:
@@ -235,11 +248,17 @@ class RiskEngine:
         _n_all = max(1, len(tweets))
         _life_cnt = sum(1 for t in _own_tweets if _hit(t.get("text") or t.get("raw") or "", LIFE_KEYWORDS))
         _sell_cnt = sum(1 for t in _own_tweets if _hit(t.get("text") or t.get("raw") or "", SELL_KEYWORDS))
+        _sell_impl_cnt = sum(1 for t in _own_tweets
+                             if _hit(t.get("text") or t.get("raw") or "", SELL_IMPLICIT_KEYWORDS)
+                             and not _hit(t.get("text") or t.get("raw") or "", SELL_KEYWORDS))
         _repost_cnt = sum(1 for t in tweets if t.get("is_retweet"))
         _life_ratio = _life_cnt / _n_own
         _sell_ratio = _sell_cnt / _n_own
         _repost_ratio = _repost_cnt / _n_all
         _bio_sell = sum(1 for kw in SELL_KEYWORDS if kw in (profile.get("description") or ""))
+        _bio_sell_impl = sum(1 for kw in SELL_IMPLICIT_KEYWORDS
+                             if kw in (profile.get("description") or "")
+                             and not any(a in (profile.get("description") or "") for a in SELL_KEYWORDS))
         _human_score = 0
         _human_break = {}
         if _sell_ratio >= 0.5:
@@ -252,9 +271,13 @@ class RiskEngine:
             _human_break["卖货内容占比"] = f"{_sell_ratio*100:.0f}% 推文含卖货/引流词（<25%，+0）"
         if _bio_sell >= 2:
             _human_score += 3
-            _human_break["简介卖货"] = f"简介含 {_bio_sell} 个卖货/引流词（>=2，营销号形态，+3）"
+            _human_break["简介卖货"] = f"简介含 {_bio_sell} 个露骨卖货词（>=2，营销号形态，+3）"
+        elif _bio_sell == 1:
+            _human_break["简介卖货"] = f"简介含 1 个露骨卖货词（<2，+0）"
         else:
-            _human_break["简介卖货"] = f"简介卖货/引流词 {_bio_sell} 个（<2，+0）"
+            _human_break["简介卖货"] = f"简介露骨卖货词 0 个（+0）"
+        if _sell_impl_cnt or _bio_sell_impl:
+            _human_break["隐晦引流提示"] = f"检测到隐晦引流词（推文 {_sell_impl_cnt} 条/简介 {_bio_sell_impl} 个），不扣分仅提示"
         if _life_ratio < 0.08:
             _human_score += 3
             _human_break["生活化内容"] = f"仅 {_life_ratio*100:.0f}% 推文有生活化内容（<8%，疑似纯营销号，+3）"
