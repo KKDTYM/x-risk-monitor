@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""X 账号风险评分引擎 v4（9 维度，风险分逻辑：分数越高风险越大）。
+"""X 账号风险评分引擎 v4.2（10 维度，风险分逻辑：分数越高风险越大）。
 
-维度总分上限 = 115（15+15+12+10+10+8+8+12+25），归一化到 0-100。
+维度总分上限 = 130（15+15+12+10+10+8+8+12+25+15），归一化到 0-100。
 等级：>=60 高风险（红） / 30-59 中风险（黄） / <30 低风险（绿）。
 数据源：Playwright 登录态 DOM 时间线 + X syndication embed + fxTwitter。
 """
@@ -42,6 +42,21 @@ TIER2_KEYWORDS = STRONG_ADULT + [
     "白虎", "奶子", "奶头", "调教", "露出", "萝莉", "正太", "强奸", "强上",
     "去势", "阉割", "切蛋", "割鸡", "阉奴", "母狗", "骚逼", "鸡巴",
 ]
+
+# ---- 第 10 维度：账号存续风险（封禁史与平台打击面）----
+# 封禁/重生历史信号：账号曾因违规被平台处理，重启后再次违规 = 再封高优先级
+SURVIVAL_BAN_KEYWORDS = [
+    "复活版", "重生号", "复活", "重生", "被冻", "冻结",
+    "重开", "復活", "旧号", "被盗号", "号被盗",
+]
+# 性交易/招嫖商业信号：平台重点打击 + 法律风险面
+SURVIVAL_SW_KEYWORDS = [
+    "接线下", "可约", "全国可飞", "全国可✈", "莞式", "报价",
+    "课表", "口令", "好友位", "私信解锁", "涩涩基地", "包夜", "线上一对一",
+    "领课表", "接单", "约炮",
+]
+# 隐私侵害信号：泄露他人姓名/住址等（开盒）
+SURVIVAL_DOX_KEYWORDS = ["地址是", "家庭住址", "住址"]
 
 
 def _hit(text, keywords):
@@ -162,6 +177,35 @@ class RiskEngine:
             _sb_issues.append(f"from:{_handle} 无推文结果，但对照组同样为空时判定为查看者敏感内容过滤所致，不重复扣分")
         if not _sb_issues:
             _sb_issues.append("无搜索可见性异常证据")
+
+        # ---- 10 维度证据：账号存续风险（封禁史 / 性交易信号 / 隐私侵害）----
+        # 仅扫描简介 + 本账号原创/回复内容（转帖是别人的内容，不算账号自述，避免误报）
+        _all_texts = [(profile.get("description") or "")]
+        _all_texts += [(t.get("text") or t.get("raw") or "") for t in tweets if not t.get("is_retweet")]
+        _ban_hits = []
+        _sw_hits = []
+        _dox_hits = []
+        for txt in _all_texts:
+            for kw in SURVIVAL_BAN_KEYWORDS:
+                if kw in txt and kw not in _ban_hits:
+                    _ban_hits.append(kw)
+            for kw in SURVIVAL_SW_KEYWORDS:
+                if kw in txt and kw not in _sw_hits:
+                    _sw_hits.append(kw)
+            for kw in SURVIVAL_DOX_KEYWORDS:
+                if kw in txt and kw not in _dox_hits:
+                    _dox_hits.append(kw)
+        _survival = min(8, len(_ban_hits) * 4) + min(7, len(_sw_hits) * 3) + (5 if _dox_hits else 0)
+        _survival = min(15, _survival)
+        _surv_issues = []
+        if _ban_hits:
+            _surv_issues.append(f"检测到封禁/重生史信号：{'、'.join(_ban_hits[:6])}（账号已被平台处理过，再封优先级高，+{min(8, len(_ban_hits) * 4)}）")
+        if _sw_hits:
+            _surv_issues.append(f"检测到性交易/招嫖商业信号：{'、'.join(_sw_hits[:8])}（平台重点打击 + 法律风险，+{min(7, len(_sw_hits) * 3)}）")
+        if _dox_hits:
+            _surv_issues.append(f"检测到疑似隐私泄露/开盒信号：{'、'.join(_dox_hits[:4])}（涉他人真实信息，+5）")
+        if not _surv_issues:
+            _surv_issues.append("未检测到封禁史/性交易/隐私侵害信号")
 
         # ---- 7 维度证据：Premium 状态 ----
         _prem_score = -2 if (profile.get("is_blue_verified") or profile.get("verified")) else (2 if followers > 10000 else 0)
@@ -300,6 +344,14 @@ class RiskEngine:
             "tier1_details": [t.get("text", "")[:80] for t in tier1_ids],
             "tier2_count": tier2_count,
             "tier2_details": [t.get("text", "")[:100] for t in tier2_ids],
+        }
+        dims["survival"] = {
+            "label": "账号存续风险",
+            "risk_score": _survival, "max_risk": 15,
+            "issues": _surv_issues,
+            "ban_hits": _ban_hits[:8],
+            "sw_hits": _sw_hits[:10],
+            "dox_hits": _dox_hits[:4],
         }
         return dims
 
