@@ -21,10 +21,36 @@ v5.0 变更（10330 样本校准，calibration_final.json）：
 - 复核落盘、marking 收紧、Tier2 分级、置信度机制保持不变
 """
 import re
+import json
+import os
 from datetime import datetime
 
+# ---- 配置加载 ----
+# 从 config.json 加载关键词和阈值（支持用户自定义）
+_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
+_config = {}
+_thresholds = {}
+_calibration = {}
+
+def _load_config():
+    """加载 config.json，支持用户自定义关键词/阈值/校准数据。"""
+    global _config, _thresholds, _calibration
+    if os.path.exists(_CONFIG_PATH):
+        try:
+            with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
+                _config = json.load(f)
+            _thresholds = _config.get("thresholds", {})
+            _calibration = _config.get("calibration", {})
+        except (json.JSONDecodeError, IOError):
+            pass  # 使用默认值
+
+_load_config()
+
+# ---- 关键词（从 config.json 加载，未加载则用硬编码默认值）----
+_KW = _config.get("keywords", {})
+
 # 强成人词：明确性内容（用于敏感标记判定 / Tier2 / 成人占比）
-STRONG_ADULT = [
+STRONG_ADULT = _KW.get("strong_adult", [
     "小穴", "肉棒", "男娘", "femboy", "母狗", "唧唧", "鸡鸡", "牛牛",
     "性爱", "做爱", "自慰", "手冲", "口交", "肛交", "乳交", "足交",
     "阴蒂", "阴道", "阴茎", "龟头", "精液", "高潮", "色情", "淫荡",
@@ -34,84 +60,87 @@ STRONG_ADULT = [
     "一夜情", "招嫖", "下海", "露出", "卖淫", "嫖",
     "sex", "nsfw", "porn", "hentai", "daddy", "kink", "bdsm", "spank",
     "selling content", "onlyfans", "fansly", "tribbing", "fisting",
-]
+])
 # 软成人词：擦边/身体向（用于成人占比与上下文）
-SOFT_ADULT = [
+SOFT_ADULT = _KW.get("soft_adult", [
     "平胸", "女仆", "ts", "丝袜", "蕾丝", "写真", "福利", "图包",
     "胸", "奶子", "奶头", "屁股", "翘臀", "足控", "恋足", "spank",
     "dom", "sub", "私房", "包月", "订阅", "打赏", "内裤", "bra", "泳装",
-]
+])
 # Tier 1 严重违规（非合意 / 未成年 / 性暴力 / 血腥剥刮）——仅保留无歧义严重词
-TIER1_KEYWORDS = [
+TIER1_KEYWORDS = _KW.get("tier1_keywords", [
     "幼女", "幼男", "恋童", "恋童癖", "儿童色情", "炼铜",
     "迷奸", "诱奸", "非自愿", "性暴力", "人兽", "兽交", "犬交",
     "分尸", "剥皮", "血腥", "gore", "snuff", "凌迟",
-]
-# “未成年/未成年人”仅在性语境共现时算 Tier 1（排除调侃/日常语境误报）
-TIER1_MINOR_CONTEXT = STRONG_ADULT + ["恋童", "儿童色情", "炼铜", "性", "色情", "操", "裸", "精液", "鸡巴"]
-# “强奸”仅在与其他严重词共现时才算 Tier 1（排除成人角色扮演/玩具等语境）
-TIER1_RAPE_CONTEXT = ["未成年", "幼女", "幼男", "恋童", "儿童色情", "炼铜", "迷奸", "诱奸", "轮奸", "下药", "迷药", "非自愿"]
-TIER1_DRUG_CONTEXT = ["强奸", "迷奸", "诱奸", "轮奸", "未成年", "幼女", "恋童", "非自愿", "性暴力", "昏迷", "灌醉"]
+])
+# "未成年/未成年人"仅在性语境共现时算 Tier 1（排除调侃/日常语境误报）
+TIER1_MINOR_CONTEXT = STRONG_ADULT + _KW.get("tier1_minor_context", ["恋童", "儿童色情", "炼铜", "性", "色情", "操", "裸", "精液", "鸡巴"])
+# "强奸"仅在与其他严重词共现时才算 Tier 1（排除成人角色扮演/玩具等语境）
+TIER1_RAPE_CONTEXT = _KW.get("tier1_rape_context", ["未成年", "幼女", "幼男", "恋童", "儿童色情", "炼铜", "迷奸", "诱奸", "轮奸", "下药", "迷药", "非自愿"])
+TIER1_DRUG_CONTEXT = _KW.get("tier1_drug_context", ["强奸", "迷奸", "诱奸", "轮奸", "未成年", "幼女", "恋童", "非自愿", "性暴力", "昏迷", "灌醉"])
 # Tier 2 边界内容（性暗示 / 低俗羞辱 / 擦边）
-TIER2_KEYWORDS = STRONG_ADULT + [
+TIER2_KEYWORDS = STRONG_ADULT + _KW.get("tier2_keywords", [
     "骚货", "贱货", "肉便器", "母畜", "淫", "荡妇", "烧鸡", "骚鸡",
     "白虎", "奶子", "奶头", "调教", "露出", "萝莉", "正太", "强奸", "强上",
     "去势", "阉割", "切蛋", "割鸡", "阉奴", "母狗", "骚逼", "鸡巴",
-]
+])
 
 # ---- 第 10 维度：账号存续风险（封禁史与平台打击面）----
 # 封禁/重生历史信号：账号曾因违规被平台处理，重启后再次违规 = 再封高优先级
-SURVIVAL_BAN_KEYWORDS = [
+SURVIVAL_BAN_KEYWORDS = _KW.get("survival_ban", [
     "复活版", "重生号", "重生", "被冻", "冻结",
     "重开", "復活", "旧号", "被盗号", "号被盗",
-    # 第二轮校准（v4.8）：恢复“被封”类精确模式（避免裸词“被封”误报 QQ 封号）
     "大号被封", "老号被封", "账号被封", "号被封了", "秽土转生", "转生",
-]
+])
 # 性交易/招嫖 + 商业变现信号（A 级=露骨明示，必须扣分）
-SURVIVAL_SW_KEYWORDS = [
+SURVIVAL_SW_KEYWORDS = _KW.get("survival_sw", [
     "接线下", "可约", "全国可飞", "全国可✈", "莞式", "报价",
     "课表", "口令", "好友位", "私信解锁", "涩涩基地", "包夜", "线上一对一",
     "领课表", "接单", "约炮", "门槛", "付费", "有偿", "包月", "订阅", "打赏",
     "图包", "淘宝", "店铺", "发售", "卖淫", "下单",
-]
+])
 # 隐晦引流词（B 级=可辩解，不扣分，仅提示）
-SURVIVAL_IMPLICIT_KEYWORDS = [
+SURVIVAL_IMPLICIT_KEYWORDS = _KW.get("survival_implicit", [
     "电报", "tg", "加群", "可线下", "🉑线下", "私信", "找我", "加我", "解锁", "购买", "价格",
-]
+])
 # 隐私侵害信号：泄露他人姓名/住址等（开盒）
-SURVIVAL_DOX_KEYWORDS = ["地址是", "家庭住址", "住址"]
+SURVIVAL_DOX_KEYWORDS = _KW.get("survival_dox", ["地址是", "家庭住址", "住址"])
 # 幼态/未成年误判风险：账号自述被平台识别为未成年（幼态人设+性话题=平台误杀高发区）
-SURVIVAL_MINOR_MISJUDGE_KEYWORDS = [
+SURVIVAL_MINOR_MISJUDGE_KEYWORDS = _KW.get("survival_minor_misjudge", [
     "识别成未成年", "识别未成年", "被识别未成年", "像未成年", "幼年时期", "幼态", "未成年警告",
-]
+])
 
 # ---- 第 11 维度：真人感 / 营销号形态 ----
 # 生活化关键词：真人博主会有日常/个人叙事
-LIFE_KEYWORDS = [
+LIFE_KEYWORDS = _KW.get("life_keywords", [
     "吃饭", "午饭", "晚饭", "早餐", "天气", "下雨", "上课", "上班", "下班",
     "实习", "考试", "作业", "累了", "好累", "朋友", "室友", "爸妈", "睡觉",
     "头疼", "感冒", "生病", "vlog", "心情", "吐槽", "生日", "放假", "回家",
     "剪头发", "逛街", "喝酒", "唱歌",
-]
+])
 # 卖货/引流关键词（A 级=露骨明示，计入营销号形态）
-SELL_KEYWORDS = [
+SELL_KEYWORDS = _KW.get("sell_keywords", [
     "口令", "课表", "门槛", "好友位", "报价", "下单", "发售", "店铺",
     "淘宝", "有偿", "付费", "包月", "订阅", "打赏", "图包", "涩涩", "接单",
     "可约", "莞式", "私信解锁", "线上一对一", "接线下", "包夜", "约炮",
-]
+])
 # 隐晦引流词（B 级=不扣分，仅提示）
-SELL_IMPLICIT_KEYWORDS = [
+SELL_IMPLICIT_KEYWORDS = _KW.get("sell_implicit", [
     "电报", "tg", "加群", "私信", "找我", "加我", "解锁", "可线下", "🉑线下", "购买", "价格",
-]
+])
 
 
 def _hit(text, keywords):
+    """关键词命中检测（支持中文边界保护）。"""
     low = (text or "").lower()
     for kw in keywords:
         k = kw.lower()
-        if re.search(r"^[a-z0-9+]+$", k) and len(k) <= 4:
-            if re.search(r"(?<![a-z0-9])" + re.escape(k) + r"(?![a-z0-9])", low):
+        # 短关键词做边界匹配（含中文边界）
+        if len(k) <= 4:
+            pattern = r"(?<![a-z0-9\u4e00-\u9fa5])" + re.escape(k) + r"(?![a-z0-9\u4e00-\u9fa5])"
+            if re.search(pattern, low):
                 return True
+        # 长关键词直接 in（中文词一般不需要边界）
         elif k in low:
             return True
     return False
@@ -136,7 +165,12 @@ class RiskEngine:
         dims = self._get_dimensions_v4(raw_data, extra_data)
         total = sum(d["risk_score"] for d in dims.values())
         max_total = sum(d["max_risk"] for d in dims.values())
-        score = max(0, min(100, round(total / max_total * 100)))
+        # 维度 3/4 永远 0 分（无数据），从分母移除避免系统性评分偏低
+        # 有效维度 = 9/11（移除 api_reply + ip_network）
+        excluded_dims = {"api_reply", "ip_network"}
+        effective_max = sum(d["max_risk"] for k, d in dims.items() if k not in excluded_dims)
+        effective_total = total  # 分子不变（维度 3/4 分数都是 0）
+        score = max(0, min(100, round(effective_total / effective_max * 100)) if effective_max > 0 else 0)
         level = "high" if score >= 60 else "medium" if score >= 30 else "low"
 
         # ---- v4.7 置信度：无数据维度 + 样本覆盖率 ----
@@ -162,6 +196,16 @@ class RiskEngine:
             "medium": "中风险：建议尽快整改——确认 ACC 计划状态，规范敏感标记，注意搜索可见性与内容合规，防范仿冒诈骗。",
             "low": "低风险：当前样本未发现严重违规，但内容以成人向为主，建议确认 ACC 计划状态并防范仿冒诈骗。",
         }
+        # 维度覆盖信息：告诉用户哪些维度缺失数据
+        total_dims = len(dims)
+        excluded_count = len(excluded_dims)
+        effective_dims = total_dims - excluded_count
+        dim_coverage_info = {
+            "total_dimensions": total_dims,
+            "effective_dimensions": effective_dims,
+            "missing_dimensions": list(excluded_dims),
+            "score_basis": f"有效维度 {effective_dims}/{total_dims}（{', '.join(excluded_dims)} 无数据，从分母移除）",
+        }
         return {
             "score": score,
             "level": level,
@@ -171,6 +215,7 @@ class RiskEngine:
             "dimensions": dims,
             "details": details,
             "recommendation": rec_map[level],
+            "dim_coverage": dim_coverage_info,
         }
 
     def _get_dimensions_v4(self, raw_data, extra_data):
@@ -273,14 +318,18 @@ class RiskEngine:
                 if kw in txt and kw not in _minor_hits:
                     _minor_hits.append(kw)
         # 校准（v5.0）：10330 样本测试集单特征 AUC：sell_a 0.196 / sell_b 0.253（方向反向），
-        # 变现信号仅为弱提示（上限 3）；ban 为唯一可靠信号（AUC 0.819 驱动）
-        _survival = min(8, len(_ban_hits) * 4) + min(3, len(_sw_hits) * 3) + (5 if _dox_hits else 0)
+        # 变现信号仅为弱提示（上限 _calibration["sell_max_weight"]）；ban 为唯一可靠信号（AUC 0.819 驱动）
+        _ban_max = _calibration.get("ban_max_weight", 8)
+        _sell_max = _calibration.get("sell_max_weight", 3)
+        _dox_score = _calibration.get("dox_score", 5)
+        _minor_score = _calibration.get("minor_score", 4)
+        _survival = min(_ban_max, len(_ban_hits) * 4) + min(_sell_max, len(_sw_hits) * 3) + (_dox_score if _dox_hits else 0)
         if _minor_hits:
-            _survival += 4
+            _survival += _minor_score
         if _impersonator_count >= 6:
-            _survival += 4
+            _survival += _calibration.get("impersonate_score_high", 4)
         elif _impersonator_count >= 3:
-            _survival += 2
+            _survival += _calibration.get("impersonate_score_low", 2)
         _survival = min(15, _survival)
         _surv_issues = []
         if _ban_hits:
@@ -317,10 +366,13 @@ class RiskEngine:
                              and not any(a in (profile.get("description") or "") for a in SELL_KEYWORDS))
         _human_score = 0
         _human_break = {}
-        if _sell_ratio >= 0.5:
+        _sell_thresh_high = _thresholds.get("repost_ratio_threshold", 0.5)
+        _sell_thresh_low = _thresholds.get("life_content_threshold_high", 0.25)
+        _life_thresh_low = _thresholds.get("life_content_threshold_low", 0.08)
+        if _sell_ratio >= _sell_thresh_high:
             _human_score += 6
             _human_break["卖货内容占比"] = f"{_sell_ratio*100:.0f}% 推文含卖货/引流词（>=50%，+6）"
-        elif _sell_ratio >= 0.25:
+        elif _sell_ratio >= _sell_thresh_low:
             _human_score += 3
             _human_break["卖货内容占比"] = f"{_sell_ratio*100:.0f}% 推文含卖货/引流词（>=25%，+3）"
         else:
@@ -334,25 +386,25 @@ class RiskEngine:
             _human_break["简介卖货"] = f"简介露骨卖货词 0 个（+0）"
         if _sell_impl_cnt or _bio_sell_impl:
             _human_break["隐晦引流提示"] = f"检测到隐晦引流词（推文 {_sell_impl_cnt} 条/简介 {_bio_sell_impl} 个），不扣分仅提示"
-        if _life_ratio < 0.08:
+        if _life_ratio < _life_thresh_low:
             _human_score += 3
-            _human_break["生活化内容"] = f"仅 {_life_ratio*100:.0f}% 推文有生活化内容（<8%，疑似纯营销号，+3）"
+            _human_break["生活化内容"] = f"仅 {_life_ratio*100:.0f}% 推文有生活化内容（<{_life_thresh_low*100:.0f}%，疑似纯营销号，+3）"
         else:
-            _human_break["生活化内容"] = f"{_life_ratio*100:.0f}% 推文有生活化内容（>=8%，+0）"
-        if _repost_ratio > 0.5:
+            _human_break["生活化内容"] = f"{_life_ratio*100:.0f}% 推文有生活化内容（>{_life_thresh_low*100:.0f}%，+0）"
+        if _repost_ratio > _sell_thresh_high:
             _human_score += 3
-            _human_break["搬运占比"] = f"转帖占 {_repost_ratio*100:.0f}%（>50%，搬运号，+3）"
+            _human_break["搬运占比"] = f"转帖占 {_repost_ratio*100:.0f}%（>{_sell_thresh_high*100:.0f}%，搬运号，+3）"
         else:
-            _human_break["搬运占比"] = f"转帖占 {_repost_ratio*100:.0f}%（<=50%，+0）"
+            _human_break["搬运占比"] = f"转帖占 {_repost_ratio*100:.0f}%（<={_sell_thresh_high*100:.0f}%，+0）"
         _human_discount = 0
         if _life_ratio >= 0.5:
             _human_discount = 4
             _human_break["真人感减免"] = f"生活化内容 {_life_ratio*100:.0f}%（>=50%，真人博主形态，-4）"
-        elif _life_ratio >= 0.25:
+        elif _life_ratio >= _sell_thresh_low:
             _human_discount = 2
-            _human_break["真人感减免"] = f"生活化内容 {_life_ratio*100:.0f}%（>=25%，-2）"
+            _human_break["真人感减免"] = f"生活化内容 {_life_ratio*100:.0f}%（>={_sell_thresh_low*100:.0f}%，-2）"
         else:
-            _human_break["真人感减免"] = f"生活化内容 {_life_ratio*100:.0f}%（<25%，无减免）"
+            _human_break["真人感减免"] = f"生活化内容 {_life_ratio*100:.0f}%（<{_sell_thresh_low*100:.0f}%，无减免）"
         _human_score = max(0, min(12, _human_score - _human_discount))
 
         # ---- 7 维度证据：Premium 状态 ----
@@ -381,13 +433,13 @@ class RiskEngine:
             # ---- 1. ACC 计划合规 (0-15) ----
             "acc_plan": {
                 "label": "ACC 计划合规",
-                "risk_score": 10 if nsfw_ratio_main > 0.2 else 0,
+                "risk_score": 10 if nsfw_ratio_main > _thresholds.get("nsfw_ratio_main", 0.2) else 0,
                 "max_risk": 15,
                 "issues": (
                     [f"主时间线 {nsfw_main}/{n_main} 条为成人/敏感内容（{nsfw_ratio_main*100:.0f}%），"
-                     "未检测到 ACC 计划成员证据，按“未加入”计分（+10；若已加入可下调）"]
-                    if nsfw_ratio_main > 0.2
-                    else [f"主时间线成人/敏感内容占比 {nsfw_ratio_main*100:.0f}%（<=20%），非成人内容账号形态，本维度计 0 分"]
+                     "未检测到 ACC 计划成员证据，按'未加入'计分（+10；若已加入可下调）"]
+                    if nsfw_ratio_main > _thresholds.get("nsfw_ratio_main", 0.2)
+                    else [f"主时间线成人/敏感内容占比 {nsfw_ratio_main*100:.0f}%（<={_thresholds.get('nsfw_ratio_main', 0.2)*100:.0f}%），非成人内容账号形态，本维度计 0 分"]
                 ),
                 "adult_ratio_main": round(nsfw_ratio_main, 3),
                 "adult_media_unmarked": len(media_unmarked),
@@ -448,6 +500,9 @@ class RiskEngine:
         burst_count = self._two_hour_burst(tweets)
         d8 = 0
         d8_breakdown = {}
+        _low_likes_threshold = _thresholds.get("low_likes_threshold", 5)
+        _low_likes_ratio = _thresholds.get("low_likes_ratio", 0.7)
+        _follower_threshold = _thresholds.get("follower_threshold", 5000)
         if nsfw_ratio_main > 0.8:
             d8 += 5
             d8_breakdown["单一 NSFW 占比"] = f"主时间线成人/敏感内容 {nsfw_ratio_main*100:.0f}% > 80%（+5）"
@@ -463,14 +518,14 @@ class RiskEngine:
             d8_breakdown["集中发布"] = f"{burst_count}/{n_all} 条推文在 2 小时窗口内发布（+3）"
         else:
             d8_breakdown["集中发布"] = f"2 小时窗口内最多 {burst_count} 条（<60%，+0）"
-        # 低互动惩罚仅适用于 5000 粉以上账号：小号互动低属正常现象，避免结构性误伤
-        if low_likes / n_all > 0.7 and followers >= 5000:
+        # 低互动惩罚仅适用于 _follower_threshold 粉以上账号：小号互动低属正常现象，避免结构性误伤
+        if low_likes / n_all > _low_likes_ratio and followers >= _follower_threshold:
             d8 += 3
-            d8_breakdown["低互动"] = f"{low_likes}/{n_all} 条互动 <5 赞（{low_likes/n_all*100:.0f}% > 70%，粉丝 {followers} >=5000，+3）"
-        elif low_likes / n_all > 0.7:
-            d8_breakdown["低互动"] = f"{low_likes}/{n_all} 条互动 <5 赞（{low_likes/n_all*100:.0f}% > 70%，但粉丝 {followers} <5000，小号正常现象不扣分）"
+            d8_breakdown["低互动"] = f"{low_likes}/{n_all} 条互动 <{_low_likes_threshold} 赞（{low_likes/n_all*100:.0f}% > {_low_likes_ratio*100:.0f}%，粉丝 {followers} >={_follower_threshold}，+3）"
+        elif low_likes / n_all > _low_likes_ratio:
+            d8_breakdown["低互动"] = f"{low_likes}/{n_all} 条互动 <{_low_likes_threshold} 赞（{low_likes/n_all*100:.0f}% > {_low_likes_ratio*100:.0f}%，但粉丝 {followers} <{_follower_threshold}，小号正常现象不扣分）"
         else:
-            d8_breakdown["低互动"] = f"{low_likes}/{n_all} 条互动 <5 赞（{low_likes/n_all*100:.0f}%，<=70%，+0）"
+            d8_breakdown["低互动"] = f"{low_likes}/{n_all} 条互动 <{_low_likes_threshold} 赞（{low_likes/n_all*100:.0f}%，<={_low_likes_ratio*100:.0f}%，+0）"
         dims["content_diversity"] = {
             "label": "内容多样性与活跃度",
             "risk_score": min(12, d8), "max_risk": 12,
@@ -491,18 +546,24 @@ class RiskEngine:
             d9_issues.append("Tier 1 严重违规 1 条（+20）")
         else:
             d9_issues.append("未检出 Tier 1（非合意/未成年/性暴力/血腥）违规")
+        _t2_3 = _thresholds.get("tier2_3_to_9_count", 3)
+        _t2_10 = _thresholds.get("tier2_10_to_49_count", 10)
+        _t2_50 = _thresholds.get("tier2_50_plus_count", 50)
+        _t2_3_score = _thresholds.get("tier2_3_to_9_score", 10)
+        _t2_10_score = _thresholds.get("tier2_10_to_49_score", 15)
+        _t2_50_score = _thresholds.get("tier2_50_plus_score", 20)
         if 1 <= tier2_count <= 2:
             d9 += 5
             d9_issues.append(f"Tier 2 边界内容 {tier2_count} 条（1-2 条 +5）")
-        elif tier2_count >= 50:
-            d9 += 20
-            d9_issues.append(f"Tier 2 边界内容 {tier2_count} 条（≥50 条 +20，擦边浓度极高）")
-        elif tier2_count >= 10:
-            d9 += 15
-            d9_issues.append(f"Tier 2 边界内容 {tier2_count} 条（10-49 条 +15）")
-        elif tier2_count >= 3:
-            d9 += 10
-            d9_issues.append(f"Tier 2 边界内容 {tier2_count} 条（3-9 条 +10）")
+        elif tier2_count >= _t2_50:
+            d9 += _t2_50_score
+            d9_issues.append(f"Tier 2 边界内容 {tier2_count} 条（≥{_t2_50} 条 +{_t2_50_score}，擦边浓度极高）")
+        elif tier2_count >= _t2_10:
+            d9 += _t2_10_score
+            d9_issues.append(f"Tier 2 边界内容 {tier2_count} 条（{_t2_10}-{_t2_50-1} 条 +{_t2_10_score}）")
+        elif tier2_count >= _t2_3:
+            d9 += _t2_3_score
+            d9_issues.append(f"Tier 2 边界内容 {tier2_count} 条（{_t2_3}-{_t2_10-1} 条 +{_t2_3_score}）")
         else:
             d9_issues.append("未检出 Tier 2 边界内容")
         dims["prohibited"] = {

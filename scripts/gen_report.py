@@ -8,41 +8,37 @@ import json
 import os
 import sys
 
-DIMS = [
-    ("acc_plan", "1. ACC 计划合规", 15,
-     "检测是否加入 X Adult Content Creator 计划：未加入 +10；加入但未完善资料 +7；已完善 0（2026 年强制）。",
-     "若经营成人内容，请加入 ACC 计划并完善资料，否则面临限流/封禁。"),
-    ("marking", "2. ACC 三级标记合规", 15,
-     "成人内容推文是否正确标记 Sensitive Media：每条未标记 +3（上限 15）。关键词：小穴、肉棒、男娘、femboy、ts、平胸、女仆、nsfw、18+ 等 50+ 词。",
-     "含成人关键词+媒体的推文必须开启“标记敏感内容”，避免漏标。"),
-    ("api_reply", "3. API 自动回复合规", 12,
-     "API v2 2026 限制：自动回复必须提及/引用原作者（未提及 +3/次）；同一推文被回复 >10 次 +2/条；回复内容重复 >5 条 +3。",
-     "使用 API 自动回复时引用原作者，控制回复频率与重复度。"),
-    ("ip_network", "4. IP/网络环境合规", 10,
-     "数据中心 IP（AWS/阿里云/腾讯云/Tor）+5；频繁 IP 切换（>5 个/周）+3；住宅 IP 正常。",
-     "使用住宅 IP 登录，避免数据中心 IP 与频繁切换。"),
-    ("shadowban", "5. Shadowban 隐形限制", 10,
-     "搜索用户名无推文显示 +6；回复深度 <3 层 +3；印响数骤降 >50% +3；特定标签搜索无该账号推文 +4。",
-     "检查搜索可见性与回复深度，避免被隐形限流。"),
-    ("follow_ratio", "6. 关注/粉丝比与增长", 8,
-     "关注/粉丝比 >10:1 +4（疑似关注轰炸）；粉丝中机器人占比 >30% +3；关注列表 >50% 被封账号 +2。",
-     "保持关注/粉丝比正常，清理机器人粉与异常关注。"),
-    ("premium", "7. Premium 会员等级", 8,
-     "Premium Basic（$3/月）0；Premium（$8/月）-2 信任加分；Premium+（$200/月）-5；粉丝 >10K 未开通 +2。",
-     "开通 Premium 提升账号信任度（负分=信任加分）。"),
-    ("content_diversity", "8. 内容多样性与活跃度", 12,
-     "单一 NSFW 内容 >80% +5；原创与搬运比 <1:3 +4；60% 推文在 2 小时内发布 +3；>70% 推文互动低（<5 赞）+3。",
-     "增加原创内容，避免内容单一与短时刷屏，提升互动。"),
-    ("prohibited", "9. 禁止内容零接触", 25,
-     "Tier 1（非合意/未成年/性暴力/血腥剥刮）：1 条 +20，≥3 条 +25；Tier 2 边界（暗示）：1-2 条 +5，≥3 条 +10。",
-     "严禁非合意/未成年/性暴力/血腥内容，控制擦边暗示。"),
-    ("survival", "10. 账号存续风险", 15,
-     "封禁/重生史信号（复活版/重生号/被冻/冻结/重开/旧号/被盗号等）+4/个（上限 8）；性交易/商业变现信号（接线下/可约/报价/课表/口令/门槛/付费/有偿/图包/电报/淘宝等）+3/个（上限 7，“无/不+词”的声明不扣）；隐私泄露/开盒信号 +5。",
-     "被封过的号按原模式重启 = 再封高优先级；涉性交易与隐私泄露的号是平台与执法重点，建议立即整改运营模式。"),
-    ("human", "11. 真人感/营销号形态", 12,
-     "卖货/引流内容占比 >=25% +3、>=50% +6；生活化内容占比 <8% +3（疑似纯营销号）；转帖占比 >50% +3；真人感减免：生活化内容 >=25% -2、>=50% -4。",
-     "营销号形态（卖货+无生活+搬运）是平台打击重点，也最容易被举报；建议补充真实生活内容、减少引流话术与搬运。"),
-]
+# 维度定义（自适应：从输入数据的 dimensions 键动态生成）
+DIM_LABELS = {
+    "acc_plan": "ACC 计划合规",
+    "marking": "ACC 三级标记合规",
+    "api_reply": "API 自动回复合规",
+    "ip_network": "IP/网络环境合规",
+    "shadowban": "Shadowban 隐形限制",
+    "follow_ratio": "关注/粉丝比与增长",
+    "premium": "Premium 会员等级",
+    "content_diversity": "内容多样性与活跃度",
+    "prohibited": "禁止内容零接触",
+    "survival": "账号存续风险",
+    "human": "真人感/营销号形态",
+}
+
+
+def build_dims(data):
+    """从输入数据的 dimensions 动态构建维度列表（支持任意维度数量）。"""
+    dims = data.get("dimensions", {})
+    result = []
+    rank = 1
+    for key, label in DIM_LABELS.items():
+        if key in dims:
+            d = dims[key]
+            max_risk = d.get("max_risk", 0)
+            result.append((key, f"{rank}. {label}", max_risk, "", ""))
+            rank += 1
+    return result
+
+
+DIMS = None  # 运行时从 build_dims 动态构建
 
 
 def color_for(score, max_risk):
@@ -59,6 +55,7 @@ def esc(s):
 
 
 def gen_report(data):
+    global DIMS
     score = data["score"]
     level = data["level"]
     meta = data.get("meta", {})
@@ -71,25 +68,34 @@ def gen_report(data):
     risk_color = {"high": "#e74c3c", "medium": "#f39c12", "low": "#2ecc71"}[level]
     risk_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}[level]
 
+    DIMS = build_dims(data)
     total_max = sum(d[2] for d in DIMS)
 
     # ---- 汇总表 ----
     score_rows = ""
     dim_total = 0
+    effective_total_max = 0
+    dim_coverage = data.get("dim_coverage", {})
+    missing_dims = dim_coverage.get("missing_dimensions", [])
+    effective_dims = dim_coverage.get("effective_dimensions", len(DIMS))
+
     for key, title, maxr, _crit, _sug in DIMS:
         d = dims.get(key, {})
         rs = d.get("risk_score", 0)
         dim_total += rs
         c = color_for(rs, maxr)
-        rate = rs / maxr * 100
+        rate = rs / maxr * 100 if maxr > 0 else 0
+        missing_note = " ⚠️无数据" if key in missing_dims else ""
         score_rows += (
-            f"<tr><td>{esc(title)}</td><td>{maxr}</td>"
+            f"<tr><td>{esc(title)}{missing_note}</td><td>{maxr}</td>"
             f'<td style="color:{c};font-weight:bold;">{rs}</td><td>{maxr}</td>'
             f'<td style="color:{c};">{rate:.0f}%</td></tr>'
         )
+        if key not in missing_dims:
+            effective_total_max += maxr
     score_rows += (
-        f'<tr class="total-row"><td>合计（维度之和）</td><td>{total_max}</td>'
-        f'<td>{dim_total}</td><td>{total_max}</td><td>{dim_total / total_max * 100:.0f}%</td></tr>'
+        f'<tr class="total-row"><td>合计（有效维度 {effective_dims} 之和）</td><td>{effective_total_max}</td>'
+        f'<td>{dim_total}</td><td>{effective_total_max}</td><td>{dim_total / effective_total_max * 100:.0f}%</td></tr>'
     )
 
     # ---- 维度卡片 ----
