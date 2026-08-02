@@ -20,11 +20,36 @@ v5.0 变更（10330 样本校准，calibration_final.json）：
 - 保留：ban 上限 8、开盒 +5、幼态 +4、仿冒 +2/+4、蓝标 -2（verified 反向支持）
 - 复核落盘、marking 收紧、Tier2 分级、置信度机制保持不变
 """
+import json
+import os
 import re
 from datetime import datetime
 
+# ---- 配置加载（v5.1 合并自 master）：config.json 外部化关键词/阈值/校准权重 ----
+_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+_config = {}
+_thresholds = {}
+_calibration = {}
+
+
+def _load_config():
+    global _config, _thresholds, _calibration
+    if os.path.exists(_CONFIG_PATH):
+        try:
+            with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
+                _config = json.load(f)
+            _thresholds = _config.get("thresholds", {})
+            _calibration = _config.get("calibration", {})
+        except (json.JSONDecodeError, IOError):
+            pass
+
+
+_load_config()
+_KW = _config.get("keywords", {})
+_CAL = _calibration
+
 # 强成人词：明确性内容（用于敏感标记判定 / Tier2 / 成人占比）
-STRONG_ADULT = [
+STRONG_ADULT = _KW.get("strong_adult", [
     "小穴", "肉棒", "男娘", "femboy", "母狗", "唧唧", "鸡鸡", "牛牛",
     "性爱", "做爱", "自慰", "手冲", "口交", "肛交", "乳交", "足交",
     "阴蒂", "阴道", "阴茎", "龟头", "精液", "高潮", "色情", "淫荡",
@@ -34,75 +59,75 @@ STRONG_ADULT = [
     "一夜情", "招嫖", "下海", "露出", "卖淫", "嫖",
     "sex", "nsfw", "porn", "hentai", "daddy", "kink", "bdsm", "spank",
     "selling content", "onlyfans", "fansly", "tribbing", "fisting",
-]
+])
 # 软成人词：擦边/身体向（用于成人占比与上下文）
-SOFT_ADULT = [
+SOFT_ADULT = _KW.get("soft_adult", [
     "平胸", "女仆", "ts", "丝袜", "蕾丝", "写真", "福利", "图包",
     "胸", "奶子", "奶头", "屁股", "翘臀", "足控", "恋足", "spank",
     "dom", "sub", "私房", "包月", "订阅", "打赏", "内裤", "bra", "泳装",
-]
+])
 # Tier 1 严重违规（非合意 / 未成年 / 性暴力 / 血腥剥刮）——仅保留无歧义严重词
-TIER1_KEYWORDS = [
+TIER1_KEYWORDS = _KW.get("tier1_keywords", [
     "幼女", "幼男", "恋童", "恋童癖", "儿童色情", "炼铜",
     "迷奸", "诱奸", "非自愿", "性暴力", "人兽", "兽交", "犬交",
     "分尸", "剥皮", "血腥", "gore", "snuff", "凌迟",
-]
+])
 # “未成年/未成年人”仅在性语境共现时算 Tier 1（排除调侃/日常语境误报）
-TIER1_MINOR_CONTEXT = STRONG_ADULT + ["恋童", "儿童色情", "炼铜", "性", "色情", "操", "裸", "精液", "鸡巴"]
+TIER1_MINOR_CONTEXT = STRONG_ADULT + _KW.get("tier1_minor_context", ["恋童", "儿童色情", "炼铜", "性", "色情", "操", "裸", "精液", "鸡巴"])
 # “强奸”仅在与其他严重词共现时才算 Tier 1（排除成人角色扮演/玩具等语境）
-TIER1_RAPE_CONTEXT = ["未成年", "幼女", "幼男", "恋童", "儿童色情", "炼铜", "迷奸", "诱奸", "轮奸", "下药", "迷药", "非自愿"]
-TIER1_DRUG_CONTEXT = ["强奸", "迷奸", "诱奸", "轮奸", "未成年", "幼女", "恋童", "非自愿", "性暴力", "昏迷", "灌醉"]
+TIER1_RAPE_CONTEXT = _KW.get("tier1_rape_context", ["未成年", "幼女", "幼男", "恋童", "儿童色情", "炼铜", "迷奸", "诱奸", "轮奸", "下药", "迷药", "非自愿"])
+TIER1_DRUG_CONTEXT = _KW.get("tier1_drug_context", ["强奸", "迷奸", "诱奸", "轮奸", "未成年", "幼女", "恋童", "非自愿", "性暴力", "昏迷", "灌醉"])
 # Tier 2 边界内容（性暗示 / 低俗羞辱 / 擦边）
-TIER2_KEYWORDS = STRONG_ADULT + [
+TIER2_KEYWORDS = STRONG_ADULT + _KW.get("tier2_keywords", [
     "骚货", "贱货", "肉便器", "母畜", "淫", "荡妇", "烧鸡", "骚鸡",
     "白虎", "奶子", "奶头", "调教", "露出", "萝莉", "正太", "强奸", "强上",
     "去势", "阉割", "切蛋", "割鸡", "阉奴", "母狗", "骚逼", "鸡巴",
-]
+])
 
 # ---- 第 10 维度：账号存续风险（封禁史与平台打击面）----
 # 封禁/重生历史信号：账号曾因违规被平台处理，重启后再次违规 = 再封高优先级
-SURVIVAL_BAN_KEYWORDS = [
+SURVIVAL_BAN_KEYWORDS = _KW.get("survival_ban", [
     "复活版", "重生号", "重生", "被冻", "冻结",
     "重开", "復活", "旧号", "被盗号", "号被盗",
     # 第二轮校准（v4.8）：恢复“被封”类精确模式（避免裸词“被封”误报 QQ 封号）
     "大号被封", "老号被封", "账号被封", "号被封了", "秽土转生", "转生",
-]
+])
 # 性交易/招嫖 + 商业变现信号（A 级=露骨明示，必须扣分）
-SURVIVAL_SW_KEYWORDS = [
+SURVIVAL_SW_KEYWORDS = _KW.get("survival_sw", [
     "接线下", "可约", "全国可飞", "全国可✈", "莞式", "报价",
     "课表", "口令", "好友位", "私信解锁", "涩涩基地", "包夜", "线上一对一",
     "领课表", "接单", "约炮", "门槛", "付费", "有偿", "包月", "订阅", "打赏",
     "图包", "淘宝", "店铺", "发售", "卖淫", "下单",
-]
+])
 # 隐晦引流词（B 级=可辩解，不扣分，仅提示）
-SURVIVAL_IMPLICIT_KEYWORDS = [
+SURVIVAL_IMPLICIT_KEYWORDS = _KW.get("survival_implicit", [
     "电报", "tg", "加群", "可线下", "🉑线下", "私信", "找我", "加我", "解锁", "购买", "价格",
-]
+])
 # 隐私侵害信号：泄露他人姓名/住址等（开盒）
-SURVIVAL_DOX_KEYWORDS = ["地址是", "家庭住址", "住址"]
+SURVIVAL_DOX_KEYWORDS = _KW.get("survival_dox", ["地址是", "家庭住址", "住址"])
 # 幼态/未成年误判风险：账号自述被平台识别为未成年（幼态人设+性话题=平台误杀高发区）
-SURVIVAL_MINOR_MISJUDGE_KEYWORDS = [
+SURVIVAL_MINOR_MISJUDGE_KEYWORDS = _KW.get("survival_minor_misjudge", [
     "识别成未成年", "识别未成年", "被识别未成年", "像未成年", "幼年时期", "幼态", "未成年警告",
-]
+])
 
 # ---- 第 11 维度：真人感 / 营销号形态 ----
 # 生活化关键词：真人博主会有日常/个人叙事
-LIFE_KEYWORDS = [
+LIFE_KEYWORDS = _KW.get("life_keywords", [
     "吃饭", "午饭", "晚饭", "早餐", "天气", "下雨", "上课", "上班", "下班",
     "实习", "考试", "作业", "累了", "好累", "朋友", "室友", "爸妈", "睡觉",
     "头疼", "感冒", "生病", "vlog", "心情", "吐槽", "生日", "放假", "回家",
     "剪头发", "逛街", "喝酒", "唱歌",
-]
+])
 # 卖货/引流关键词（A 级=露骨明示，计入营销号形态）
-SELL_KEYWORDS = [
+SELL_KEYWORDS = _KW.get("sell_keywords", [
     "口令", "课表", "门槛", "好友位", "报价", "下单", "发售", "店铺",
     "淘宝", "有偿", "付费", "包月", "订阅", "打赏", "图包", "涩涩", "接单",
     "可约", "莞式", "私信解锁", "线上一对一", "接线下", "包夜", "约炮",
-]
+])
 # 隐晦引流词（B 级=不扣分，仅提示）
-SELL_IMPLICIT_KEYWORDS = [
+SELL_IMPLICIT_KEYWORDS = _KW.get("sell_implicit", [
     "电报", "tg", "加群", "私信", "找我", "加我", "解锁", "可线下", "🉑线下", "购买", "价格",
-]
+])
 
 
 def _hit(text, keywords):
@@ -135,8 +160,10 @@ class RiskEngine:
         profile = raw_data.get("profile", {}) or {}
         dims = self._get_dimensions_v4(raw_data, extra_data)
         total = sum(d["risk_score"] for d in dims.values())
-        max_total = sum(d["max_risk"] for d in dims.values())
-        score = max(0, min(100, round(total / max_total * 100)))
+        # v5.1（合并 master）：无数据维度（api_reply/ip_network）从分母移除，避免系统性评分偏低
+        excluded_dims = {"api_reply", "ip_network"}
+        effective_max = sum(d["max_risk"] for k, d in dims.items() if k not in excluded_dims)
+        score = max(0, min(100, round(total / effective_max * 100))) if effective_max > 0 else 0
         level = "high" if score >= 60 else "medium" if score >= 30 else "low"
 
         # ---- v4.7 置信度：无数据维度 + 样本覆盖率 ----
@@ -165,6 +192,12 @@ class RiskEngine:
         return {
             "score": score,
             "level": level,
+            "dim_coverage": {
+                "total_dimensions": len(dims),
+                "effective_dimensions": len(dims) - len(excluded_dims),
+                "missing_dimensions": sorted(excluded_dims),
+                "score_basis": f"有效维度 {len(dims) - len(excluded_dims)}/{len(dims)}（api_reply/ip_network 无数据，从分母移除）",
+            },
             "confidence": confidence,
             "coverage": round(coverage, 3),
             "score_range": score_range,
@@ -272,15 +305,20 @@ class RiskEngine:
             for kw in SURVIVAL_MINOR_MISJUDGE_KEYWORDS:
                 if kw in txt and kw not in _minor_hits:
                     _minor_hits.append(kw)
-        # 校准（v5.0）：10330 样本测试集单特征 AUC：sell_a 0.196 / sell_b 0.253（方向反向），
-        # 变现信号仅为弱提示（上限 3）；ban 为唯一可靠信号（AUC 0.819 驱动）
-        _survival = min(8, len(_ban_hits) * 4) + min(3, len(_sw_hits) * 3) + (5 if _dox_hits else 0)
+        # 校准（v5.0/v5.1）：权重来自 config.json calibration（默认 10330 样本校准结果）
+        _ban_w = int(_CAL.get("ban_max_weight", 8))
+        _sell_w = int(_CAL.get("sell_max_weight", 3))
+        _dox_w = int(_CAL.get("dox_score", 5))
+        _minor_w = int(_CAL.get("minor_score", 4))
+        _imp_low = int(_CAL.get("impersonate_score_low", 2))
+        _imp_high = int(_CAL.get("impersonate_score_high", 4))
+        _survival = min(_ban_w, len(_ban_hits) * 4) + min(_sell_w, len(_sw_hits) * 3) + (_dox_w if _dox_hits else 0)
         if _minor_hits:
-            _survival += 4
+            _survival += _minor_w
         if _impersonator_count >= 6:
-            _survival += 4
+            _survival += _imp_high
         elif _impersonator_count >= 3:
-            _survival += 2
+            _survival += _imp_low
         _survival = min(15, _survival)
         _surv_issues = []
         if _ban_hits:
@@ -356,8 +394,9 @@ class RiskEngine:
         _human_score = max(0, min(12, _human_score - _human_discount))
 
         # ---- 7 维度证据：Premium 状态 ----
-        _prem_score = -2 if (profile.get("is_blue_verified") or profile.get("verified")) else (2 if followers > 10000 else 0)
-        _prem_issues = ["蓝标认证 → 推断开通 Premium（-2 信任加分）"] if (profile.get("is_blue_verified") or profile.get("verified")) else (
+        _prem_verified_score = int(_CAL.get("verified_score", -2))
+        _prem_score = _prem_verified_score if (profile.get("is_blue_verified") or profile.get("verified")) else (2 if followers > 10000 else 0)
+        _prem_issues = [f"蓝标认证 → 推断开通 Premium（{_prem_verified_score} 信任加分）"] if (profile.get("is_blue_verified") or profile.get("verified")) else (
             [f"粉丝 {followers} >10K 但未见 Premium 标记（+2）"] if followers > 10000
             else [f"粉丝 {followers} <10K，Premium 维度无加分/扣分"]
         )
