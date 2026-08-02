@@ -1,0 +1,42 @@
+{
+  "accounts": {
+    "chichi_maddy": {
+      "score": 60,
+      "level": "high",
+      "adult_pct": 40.15748031496063,
+      "media_pct": 100.0,
+      "adult_with_media": 51,
+      "sensitive_marked": 0,
+      "unmarked": 51,
+      "tweets_total": 127,
+      "followers": 44000,
+      "created_at": "?"
+    },
+    "shutiaoniang": {
+      "score": 40,
+      "level": "medium",
+      "adult_pct": 95.55555555555556,
+      "media_pct": 100.0,
+      "adult_with_media": 129,
+      "sensitive_marked": 0,
+      "unmarked": 129,
+      "tweets_total": 135,
+      "followers": 35000,
+      "created_at": "?"
+    },
+    "jiajia2475": {
+      "score": 40,
+      "level": "medium",
+      "adult_pct": 84.31372549019608,
+      "media_pct": 100.0,
+      "adult_with_media": 43,
+      "sensitive_marked": 0,
+      "unmarked": 43,
+      "tweets_total": 51,
+      "followers": 13000,
+      "created_at": "?"
+    }
+  },
+  "analysis_date": "2026-07-26",
+  "note": "三个账号均为\"男娘/伪娘\"主题，发布大量成人向内容，但均未被封禁。"
+}

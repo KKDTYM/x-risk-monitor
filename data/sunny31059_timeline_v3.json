@@ -1,0 +1,24 @@
+{
+  "username": "sunny31059",
+  "scraped_at": "2026-07-26T05:30:06.943Z",
+  "source": "playwright_dom+fxtwitter_api",
+  "profile": {},
+  "recent_tweets": [
+    {
+      "text": "也只是想洗一个正儿八经的热水澡，怎么这么难呢\n#男娘",
+      "date": "Sat Jul 25 05:59:31 +0000 2026",
+      "tweet_id": "2080895701979140374",
+      "is_sensitive": false,
+      "has_image": true,
+      "raw": ""
+    },
+    {
+      "text": "这些年学过最有用的技能就是化妆了，直男时用到刃耀时\n#男娘",
+      "date": "Tue Jul 14 13:33:34 +0000 2026",
+      "tweet_id": "2077023703163187300",
+      "is_sensitive": false,
+      "has_image": true,
+      "raw": ""
+    }
+  ]
+}

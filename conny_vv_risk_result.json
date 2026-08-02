@@ -1,0 +1,47 @@
+{
+  "username": "Conny_vv",
+  "assessed_at": "2026-07-25T12:49:52.110622",
+  "data_source": "fxtwitter_profile_only (no_tweets_due_to_x_rate_limit)",
+  "profile": {
+    "name": "TS_Conny_🐰",
+    "description": "上海Ts Shanghai Trans 💜 TKS for following.\n174/65kg 真发女声 36D\n❤ Daily share 🉑线下 全国可✈️ 🚪66 口令私信→解锁🛰️ 领课表\n🔗tg：https://t.me/Ts_Conny",
+    "followers_count": 447,
+    "following_count": 46,
+    "tweets_count": 37,
+    "location": "Shanghai",
+    "joined": "Tue Jul 19 05:06:47 +0000 2022",
+    "is_sensitive": false,
+    "protected": false
+  },
+  "scores": {
+    "formal_empty_tweets": {
+      "score": 0,
+      "level": "low"
+    },
+    "augmented_with_bio": {
+      "score": 39,
+      "level": "medium"
+    }
+  },
+  "dimensions": {
+    "empty_tweets": {
+      "账号状态": 0,
+      "安全红线": 0,
+      "操纵指数": 0,
+      "敏感内容": 0,
+      "内容质量": 0
+    },
+    "with_bio_tweet": {
+      "账号状态": 0,
+      "安全红线": 5,
+      "操纵指数": 4,
+      "敏感内容": 22,
+      "内容质量": 8
+    }
+  },
+  "details_formal": [],
+  "details_augmented": [
+    "发现 1 条敏感推文（含 NSFW 标记）",
+    "已分析 1 篇最近推文（含转发）"
+  ]
+}
