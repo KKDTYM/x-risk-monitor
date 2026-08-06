@@ -70,7 +70,7 @@ SOFT_ADULT = _KW.get("soft_adult", [
 TIER1_KEYWORDS = _KW.get("tier1_keywords", [
     "幼女", "幼男", "恋童", "恋童癖", "儿童色情", "炼铜",
     "迷奸", "诱奸", "非自愿", "性暴力", "人兽", "兽交", "犬交",
-    "分尸", "剥皮", "血腥", "gore", "snuff", "凌迟",
+    "分尸", "剥皮", "gore", "snuff", "凌迟",
 ])
 # “未成年/未成年人”仅在性语境共现时算 Tier 1（排除调侃/日常语境误报）
 TIER1_MINOR_CONTEXT = STRONG_ADULT + _KW.get("tier1_minor_context", ["恋童", "儿童色情", "炼铜", "性", "色情", "操", "裸", "精液", "鸡巴"])
