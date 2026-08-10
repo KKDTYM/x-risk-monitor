@@ -75,7 +75,7 @@ TIER1_KEYWORDS = _KW.get("tier1_keywords", [
 # “未成年/未成年人”仅在性语境共现时算 Tier 1（排除调侃/日常语境误报）
 TIER1_MINOR_CONTEXT = STRONG_ADULT + _KW.get("tier1_minor_context", ["恋童", "儿童色情", "炼铜", "性", "色情", "操", "裸", "精液", "鸡巴"])
 # “强奸”仅在与其他严重词共现时才算 Tier 1（排除成人角色扮演/玩具等语境）
-TIER1_RAPE_CONTEXT = _KW.get("tier1_rape_context", ["未成年", "幼女", "幼男", "恋童", "儿童色情", "炼铜", "迷奸", "诱奸", "轮奸", "下药", "迷药", "非自愿"])
+TIER1_RAPE_CONTEXT = _KW.get("tier1_rape_context", ["未成年", "幼女", "幼男", "恋童", "儿童色情", "炼铜", "迷奸", "诱奸", "下药", "迷药", "非自愿"])
 TIER1_DRUG_CONTEXT = _KW.get("tier1_drug_context", ["强奸", "迷奸", "诱奸", "轮奸", "未成年", "幼女", "恋童", "非自愿", "性暴力", "昏迷", "灌醉"])
 # Tier 2 边界内容（性暗示 / 低俗羞辱 / 擦边）
 TIER2_KEYWORDS = STRONG_ADULT + _KW.get("tier2_keywords", [
