@@ -322,6 +322,38 @@
             "🉑线下",
             "购买",
             "价格"
+        ],
+        "survival_sw_explicit": [
+            "接线下",
+            "可约",
+            "全国可飞",
+            "全国可✈",
+            "莞式",
+            "包夜",
+            "线上一对一",
+            "卖淫"
+        ],
+        "survival_sw_monetize": [
+            "报价",
+            "课表",
+            "口令",
+            "好友位",
+            "私信解锁",
+            "涩涩基地",
+            "领课表",
+            "接单",
+            "约炮",
+            "门槛",
+            "付费",
+            "有偿",
+            "包月",
+            "订阅",
+            "打赏",
+            "图包",
+            "淘宝",
+            "店铺",
+            "发售",
+            "下单"
         ]
     },
     "thresholds": {
@@ -347,7 +379,8 @@
         "minor_score": 4,
         "impersonate_score_low": 2,
         "impersonate_score_high": 4,
-        "verified_score": -2
+        "verified_score": -2,
+        "sell_explicit_max_weight": 7
     },
     "accounts": [
         {

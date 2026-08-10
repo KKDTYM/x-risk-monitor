@@ -93,12 +93,17 @@ SURVIVAL_BAN_KEYWORDS = _KW.get("survival_ban", [
     "大号被封", "老号被封", "账号被封", "号被封了", "秽土转生", "转生",
 ])
 # 性交易/招嫖 + 商业变现信号（A 级=露骨明示，必须扣分）
-SURVIVAL_SW_KEYWORDS = _KW.get("survival_sw", [
+# v5.2：拆分为“性服务明示”与“普通变现”——@Conny_vv 冻结案例显示性服务明示是强风险信号
+SURVIVAL_SW_EXPLICIT = _KW.get("survival_sw_explicit", [
+    "接线下", "可约", "全国可飞", "全国可✈", "莞式", "包夜", "线上一对一", "卖淫", "嫖", "援交",
+])
+SURVIVAL_SW_MONETIZE = _KW.get("survival_sw_monetize", [
     "接线下", "可约", "全国可飞", "全国可✈", "莞式", "报价",
     "课表", "口令", "好友位", "私信解锁", "涩涩基地", "包夜", "线上一对一",
     "领课表", "接单", "约炮", "门槛", "付费", "有偿", "包月", "订阅", "打赏",
     "图包", "淘宝", "店铺", "发售", "卖淫", "下单",
 ])
+SURVIVAL_SW_KEYWORDS = SURVIVAL_SW_EXPLICIT + SURVIVAL_SW_MONETIZE
 # 隐晦引流词（B 级=可辩解，不扣分，仅提示）
 SURVIVAL_IMPLICIT_KEYWORDS = _KW.get("survival_implicit", [
     "电报", "tg", "加群", "可线下", "🉑线下", "私信", "找我", "加我", "解锁", "购买", "价格",
@@ -280,6 +285,8 @@ class RiskEngine:
         _all_texts += [(t.get("text") or t.get("raw") or "") for t in tweets if not t.get("is_retweet")]
         _ban_hits = []
         _sw_hits = []
+        _sw_explicit_hits = []
+        _sw_monetize_hits = []
         _dox_hits = []
         _impl_hits = []
         _minor_hits = []
@@ -296,6 +303,10 @@ class RiskEngine:
                     continue
                 if kw in txt:
                     _sw_hits.append(kw)
+                    if kw in SURVIVAL_SW_EXPLICIT:
+                        _sw_explicit_hits.append(kw)
+                    else:
+                        _sw_monetize_hits.append(kw)
             for kw in SURVIVAL_IMPLICIT_KEYWORDS:
                 if kw in txt and not any(a in txt for a in SURVIVAL_SW_KEYWORDS) and kw not in _impl_hits:
                     _impl_hits.append(kw)
@@ -308,11 +319,16 @@ class RiskEngine:
         # 校准（v5.0/v5.1）：权重来自 config.json calibration（默认 10330 样本校准结果）
         _ban_w = int(_CAL.get("ban_max_weight", 8))
         _sell_w = int(_CAL.get("sell_max_weight", 3))
+        _sell_explicit_w = int(_CAL.get("sell_explicit_max_weight", 7))
         _dox_w = int(_CAL.get("dox_score", 5))
         _minor_w = int(_CAL.get("minor_score", 4))
         _imp_low = int(_CAL.get("impersonate_score_low", 2))
         _imp_high = int(_CAL.get("impersonate_score_high", 4))
-        _survival = min(_ban_w, len(_ban_hits) * 4) + min(_sell_w, len(_sw_hits) * 3) + (_dox_w if _dox_hits else 0)
+        # v5.2：性服务明示（可约/接线下/全国可飞等）+4/个上限 7；普通变现 +3/个上限 3
+        _survival = (min(_ban_w, len(_ban_hits) * 4)
+                     + min(_sell_explicit_w, len(_sw_explicit_hits) * 4)
+                     + min(_sell_w, len(_sw_monetize_hits) * 3)
+                     + (_dox_w if _dox_hits else 0))
         if _minor_hits:
             _survival += _minor_w
         if _impersonator_count >= 6:
@@ -323,8 +339,10 @@ class RiskEngine:
         _surv_issues = []
         if _ban_hits:
             _surv_issues.append(f"检测到封禁/重生史信号：{'、'.join(_ban_hits[:6])}（账号已被平台处理过，再封优先级高，+{min(8, len(_ban_hits) * 4)}）")
-        if _sw_hits:
-            _surv_issues.append(f"检测到性交易/商业变现信号：{'、'.join(_sw_hits[:8])}（校准显示变现与重生史相关性弱，仅弱提示 +{min(3, len(_sw_hits) * 3)}）")
+        if _sw_explicit_hits:
+            _surv_issues.append(f"检测到性服务明示信号：{'、'.join(_sw_explicit_hits[:8])}（可约/接线下/全国可飞等，@Conny_vv 冻结案例支持高权重，+{min(_sell_explicit_w, len(_sw_explicit_hits) * 4)}）")
+        if _sw_monetize_hits:
+            _surv_issues.append(f"检测到商业变现信号：{'、'.join(_sw_monetize_hits[:8])}（口令/课表/好友位等，弱提示 +{min(_sell_w, len(_sw_monetize_hits) * 3)}）")
         if _impl_hits:
             _surv_issues.append(f"检测到隐晦引流词（未扣分，仅提示）：{'、'.join(_impl_hits[:6])}")
         if _dox_hits:

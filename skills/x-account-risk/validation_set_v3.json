@@ -8,7 +8,8 @@
     "izzzzzumiu7",
     "liwanji191",
     "xiaoluifm",
-    "ulysses13145"
+    "ulysses13145",
+    "conny_vv"
   ],
   "rebirth_alive": [
     {
@@ -999,6 +1000,24 @@
         "重生"
       ],
       "bio": "原创博主，唯一账号，重生之老马再爱我一次，主页视频完整版都在电报群，自助入群链接https://t.me/zzkthur_shop_bot，感谢您支持原创博主，有问题可私信~"
+    }
+  ],
+  "dead_confirmations": [
+    {
+      "handle": "conny_vv",
+      "detected": "2026-08-10",
+      "status": "frozen",
+      "evidence": "X 页面显示「账号已被冻结——X 会冻结违反 X 规则的账号」",
+      "premortem_score": 32,
+      "premortem_date": "2026-08-02",
+      "premortem_dims": {
+        "acc_plan": 10,
+        "marking": 0,
+        "prohibited": 15,
+        "survival": 3,
+        "human": 6,
+        "content_diversity": 5
+      }
     }
   ]
 }
