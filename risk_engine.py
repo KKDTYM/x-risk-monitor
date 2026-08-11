@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""X 账号风险评分引擎 v5.0（11 维度，风险分逻辑：分数越高风险越大）。
+"""X 账号风险评分引擎 v5.3（11 维度，风险分逻辑：分数越高风险越大）。
 
-维度总分上限 = 142（15+15+12+10+10+8+8+12+25+15+12），归一化到 0-100。
+维度总分上限 = 147（15+15+12+10+10+8+8+12+25+18+14），有效维度（不含 api_reply/ip_network）= 125，归一化到 0-100。
 等级：>=60 高风险（红） / 30-59 中风险（黄） / <30 低风险（绿）。
 数据源：Playwright 登录态 DOM 时间线 + X syndication embed + fxTwitter。
 
@@ -19,6 +19,18 @@ v5.0 变更（10330 样本校准，calibration_final.json）：
 - ban（bio 封禁/重生表述）为唯一可靠信号（负样本误报极低）
 - 保留：ban 上限 8、开盒 +5、幼态 +4、仿冒 +2/+4、蓝标 -2（verified 反向支持）
 - 复核落盘、marking 收紧、Tier2 分级、置信度机制保持不变
+
+v5.3 变更（7 个真实死亡样本校准：conny_vv / ultimatesexy15 / shichengjiangya / jiajia2475 /
+gg64958 / mirahangzhou / jingjing0324，2026-08-10~11 封号潮）：
+- 性服务明示 +5/个 上限 10（原 +4/7）；新增 可线下/🉑线下/可以约会/可1可0/有🚪/🚪+数字
+- 商业变现 +3/个 上限 6（原上限 3）；新增 🛰/微信/支付宝/红包/定制/1v1/私聊/加好友
+- 新增简介信号：个人数据模板（身高体重/脚码/三围/足模） +4、引流（dy同名等） +2、
+  卖货免责声明（感谢X平台/遵守X平台规则） +2、简介综合变现（bio 卖货词≥3） +3
+- 真人感维度：简介卖货词 ≥1 +3 / ≥3 +5；简介性服务明示 +4；单向关注营销号 +4；
+  大V卖货号（>1万粉且简介卖货） +3；低内容高粉 +3
+- 增长维度：粉丝/推文比 >50 且推文 <200 +3；新号快速涨粉（<90天>500粉 +3，<30天>200粉 +4）
+- 露骨卖货号不享受 marking 擦边折算；认证卖货号不享受蓝标信任加分
+- 校准结果：5 个有推文数据的死亡样本全部 ≥46（该动手）；profile-only 样本输出低置信度提示
 """
 import json
 import os
@@ -96,12 +108,14 @@ SURVIVAL_BAN_KEYWORDS = _KW.get("survival_ban", [
 # v5.2：拆分为“性服务明示”与“普通变现”——@Conny_vv 冻结案例显示性服务明示是强风险信号
 SURVIVAL_SW_EXPLICIT = _KW.get("survival_sw_explicit", [
     "接线下", "可约", "全国可飞", "全国可✈", "莞式", "包夜", "线上一对一", "卖淫", "嫖", "援交",
+    "可线下", "🉑线下", "可以约会", "可1可0", "有🚪",
 ])
 SURVIVAL_SW_MONETIZE = _KW.get("survival_sw_monetize", [
     "接线下", "可约", "全国可飞", "全国可✈", "莞式", "报价",
     "课表", "口令", "好友位", "私信解锁", "涩涩基地", "包夜", "线上一对一",
     "领课表", "接单", "约炮", "门槛", "付费", "有偿", "包月", "订阅", "打赏",
-    "图包", "淘宝", "店铺", "发售", "卖淫", "下单",
+    "图包", "淘宝", "店铺", "发售", "卖淫", "下单", "🛰", "微信", "支付宝",
+    "红包", "定制", "1v1", "私聊", "加好友",
 ])
 SURVIVAL_SW_KEYWORDS = SURVIVAL_SW_EXPLICIT + SURVIVAL_SW_MONETIZE
 # 隐晦引流词（B 级=可辩解，不扣分，仅提示）
@@ -128,11 +142,27 @@ SELL_KEYWORDS = _KW.get("sell_keywords", [
     "口令", "课表", "门槛", "好友位", "报价", "下单", "发售", "店铺",
     "淘宝", "有偿", "付费", "包月", "订阅", "打赏", "图包", "涩涩", "接单",
     "可约", "莞式", "私信解锁", "线上一对一", "接线下", "包夜", "约炮",
+    "🛰", "微信", "支付宝", "红包", "定制", "1v1", "私聊", "加好友",
 ])
 # 隐晦引流词（B 级=不扣分，仅提示）
 SELL_IMPLICIT_KEYWORDS = _KW.get("sell_implicit", [
     "电报", "tg", "加群", "私信", "找我", "加我", "解锁", "可线下", "🉑线下", "购买", "价格",
 ])
+
+# ---- v5.3：简介形态信号（TS/男娘卖货号标配人设）----
+# 个人数据模板：身高/体重/脚码/三围/足模写真等（卖货人设，非真实日常）
+BIO_DATA_PATTERNS = [
+    re.compile(r"\d{3}\s*(?:cm)?\s*[^\dA-Za-z]{1,4}\d{2,3}\s*(?:kg|斤)?"),
+    re.compile(r"(?:🦶|脚码|鞋码)\s*\d"),
+    re.compile(r"三围[^\d]{0,4}\d"),
+]
+BIO_SELL_ROLE_KEYWORDS = _KW.get("bio_sell_role", ["足模", "写真模特", "模特", "福利姬", "私房照"])
+# 引流到其他平台/同名可搜（卖货号标配）
+BIO_DRAIN_KEYWORDS = _KW.get("bio_drain", ["dy同名", "抖音同名", "全网同名", "同名可搜"])
+# 卖货免责声明（卖货号标配话术）
+BIO_DISCLAIMER_KEYWORDS = _KW.get("bio_disclaimer", ["感谢X平台", "遵守X平台规则", "遵守平台规则", "严格自律"])
+# 简介明确否认卖货（真实博主自证，豁免数据模板加分）
+BIO_NO_SELL_KEYWORDS = _KW.get("bio_no_sell", ["无推广", "不接推广", "无图包", "不卖图", "不接单", "不卖货"])
 
 
 def _hit(text, keywords):
@@ -216,6 +246,18 @@ class RiskEngine:
         tweets = raw_data.get("recent_tweets", []) or []
         followers = _parse_int(profile.get("followers_count", 0))
         following = _parse_int(profile.get("following_count", 0))
+        # v5.3：账号年龄（新号快速涨粉/新号卖货人设信号共用）
+        _age_days = None
+        _joined = profile.get("joined") or ""
+        for _fmt in ("%a %b %d %H:%M:%S %z %Y", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"):
+            try:
+                _jd = datetime.strptime(_joined.strip(), _fmt)
+                _age_days = (datetime.utcnow() - _jd.replace(tzinfo=None)).days
+                break
+            except (ValueError, AttributeError):
+                continue
+        if _age_days is not None and _age_days < 0:
+            _age_days = None
 
         # 主时间线推文（用于“账号发布内容”类指标）
         timeline_posts = [t for t in tweets
@@ -316,33 +358,74 @@ class RiskEngine:
             for kw in SURVIVAL_MINOR_MISJUDGE_KEYWORDS:
                 if kw in txt and kw not in _minor_hits:
                     _minor_hits.append(kw)
-        # 校准（v5.0/v5.1）：权重来自 config.json calibration（默认 10330 样本校准结果）
+        # 校准（v5.0/v5.1/v5.3）：权重来自 config.json calibration
         _ban_w = int(_CAL.get("ban_max_weight", 8))
-        _sell_w = int(_CAL.get("sell_max_weight", 3))
-        _sell_explicit_w = int(_CAL.get("sell_explicit_max_weight", 7))
+        _sell_w = int(_CAL.get("sell_max_weight", 6))
+        _sell_explicit_w = int(_CAL.get("sell_explicit_max_weight", 10))
         _dox_w = int(_CAL.get("dox_score", 5))
         _minor_w = int(_CAL.get("minor_score", 4))
         _imp_low = int(_CAL.get("impersonate_score_low", 2))
         _imp_high = int(_CAL.get("impersonate_score_high", 4))
-        # v5.2：性服务明示（可约/接线下/全国可飞等）+4/个上限 7；普通变现 +3/个上限 3
+        _survival_max = int(_CAL.get("survival_max", 18))
+        # v5.3：🚪+数字 = 付费门槛（明示）
+        _bio_text = profile.get("description") or ""
+        if re.search(r"🚪\s*\d", _bio_text) and "🚪+数字" not in _sw_explicit_hits:
+            _sw_explicit_hits.append("🚪+数字")
+        # v5.3：简介形态信号（个人数据模板/引流/免责声明）
+        _bio_no_sell = any(k in _bio_text for k in BIO_NO_SELL_KEYWORDS)
+        _bio_data_hit = (any(p.search(_bio_text) for p in BIO_DATA_PATTERNS) or any(
+            k in _bio_text for k in BIO_SELL_ROLE_KEYWORDS)) and not _bio_no_sell
+        _bio_drain_hits = [k for k in BIO_DRAIN_KEYWORDS if k in _bio_text]
+        _bio_disclaimer_hits = [k for k in BIO_DISCLAIMER_KEYWORDS if k in _bio_text]
+        _bio_sell_count = sum(1 for kw in SELL_KEYWORDS if kw in _bio_text)
+        # v5.3：新号卖货人设组合（<90 天 + 数据模板/卖货词/引流）——本轮封号潮高危组合
+        _new_acc_seller = (_age_days is not None and _age_days < 90
+                           and (_bio_data_hit or _bio_sell_count >= 1 or bool(_bio_drain_hits)))
+        _fast_growth = (_age_days is not None and _age_days < 90 and followers > 200
+                        and followers / max(1, _age_days) > 10)
+        # v5.3：性服务明示 +5/个 上限 10；普通变现 +3/个 上限 6；简介形态加成
         _survival = (min(_ban_w, len(_ban_hits) * 4)
-                     + min(_sell_explicit_w, len(_sw_explicit_hits) * 4)
+                     + min(_sell_explicit_w, len(_sw_explicit_hits) * 5)
                      + min(_sell_w, len(_sw_monetize_hits) * 3)
                      + (_dox_w if _dox_hits else 0))
+        if _bio_data_hit:
+            _survival += int(_CAL.get("bio_data_score", 4))
+        if _bio_drain_hits:
+            _survival += int(_CAL.get("bio_drain_score", 2))
+        if _bio_disclaimer_hits:
+            _survival += int(_CAL.get("bio_disclaimer_score", 2))
+        if _bio_sell_count >= 3:
+            _survival += int(_CAL.get("bio_pack_sell_score", 3))
+        if _new_acc_seller:
+            _survival += int(_CAL.get("new_acc_seller_combo", 5))
+        if _fast_growth:
+            _survival += int(_CAL.get("growth_velocity", 3))
         if _minor_hits:
             _survival += _minor_w
         if _impersonator_count >= 6:
             _survival += _imp_high
         elif _impersonator_count >= 3:
             _survival += _imp_low
-        _survival = min(15, _survival)
+        _survival = min(_survival_max, _survival)
         _surv_issues = []
         if _ban_hits:
             _surv_issues.append(f"检测到封禁/重生史信号：{'、'.join(_ban_hits[:6])}（账号已被平台处理过，再封优先级高，+{min(8, len(_ban_hits) * 4)}）")
         if _sw_explicit_hits:
-            _surv_issues.append(f"检测到性服务明示信号：{'、'.join(_sw_explicit_hits[:8])}（可约/接线下/全国可飞等，@Conny_vv 冻结案例支持高权重，+{min(_sell_explicit_w, len(_sw_explicit_hits) * 4)}）")
+            _surv_issues.append(f"检测到性服务明示信号：{'、'.join(_sw_explicit_hits[:8])}（可约/接线下/全国可飞等，@Conny_vv 冻结案例支持高权重，+{min(_sell_explicit_w, len(_sw_explicit_hits) * 5)}）")
         if _sw_monetize_hits:
-            _surv_issues.append(f"检测到商业变现信号：{'、'.join(_sw_monetize_hits[:8])}（口令/课表/好友位等，弱提示 +{min(_sell_w, len(_sw_monetize_hits) * 3)}）")
+            _surv_issues.append(f"检测到商业变现信号：{'、'.join(_sw_monetize_hits[:8])}（口令/课表/好友位等，+{min(_sell_w, len(_sw_monetize_hits) * 3)}）")
+        if _bio_data_hit:
+            _surv_issues.append("简介含个人数据模板（身高/体重/脚码/三围/足模等，卖货人设，+4）")
+        if _bio_drain_hits:
+            _surv_issues.append(f"简介含跨平台引流词：{'、'.join(_bio_drain_hits)}（+2）")
+        if _bio_disclaimer_hits:
+            _surv_issues.append(f"简介含卖货免责声明：{'、'.join(_bio_disclaimer_hits)}（+2）")
+        if _bio_sell_count >= 3:
+            _surv_issues.append(f"简介含 {_bio_sell_count} 个露骨卖货词，明码标价简介（+3）")
+        if _new_acc_seller:
+            _surv_issues.append(f"新号（{_age_days} 天）+ 卖货人设（数据模板/卖货词/引流），本轮封号潮高危组合（+5）")
+        if _fast_growth:
+            _surv_issues.append(f"注册 {_age_days} 天日均涨粉 {followers/_age_days:.0f}（>10/天），增长速度异常（+3）")
         if _impl_hits:
             _surv_issues.append(f"检测到隐晦引流词（未扣分，仅提示）：{'、'.join(_impl_hits[:6])}")
         if _dox_hits:
@@ -367,12 +450,16 @@ class RiskEngine:
         _life_ratio = _life_cnt / _n_own
         _sell_ratio = _sell_cnt / _n_own
         _repost_ratio = _repost_cnt / _n_all
-        _bio_sell = sum(1 for kw in SELL_KEYWORDS if kw in (profile.get("description") or ""))
+        _bio_sell = sum(1 for kw in SELL_KEYWORDS if kw in _bio_text)
         _bio_sell_impl = sum(1 for kw in SELL_IMPLICIT_KEYWORDS
-                             if kw in (profile.get("description") or "")
-                             and not any(a in (profile.get("description") or "") for a in SELL_KEYWORDS))
+                             if kw in _bio_text
+                             and not any(a in _bio_text for a in SELL_KEYWORDS))
+        _bio_explicit_hits = [kw for kw in SURVIVAL_SW_EXPLICIT if kw in _bio_text]
+        if re.search(r"🚪\s*\d", _bio_text):
+            _bio_explicit_hits.append("🚪+数字")
         _human_score = 0
         _human_break = {}
+        _human_max = int(_CAL.get("human_max", 14))
         if _sell_ratio >= 0.5:
             _human_score += 6
             _human_break["卖货内容占比"] = f"{_sell_ratio*100:.0f}% 推文含卖货/引流词（>=50%，+6）"
@@ -381,13 +468,29 @@ class RiskEngine:
             _human_break["卖货内容占比"] = f"{_sell_ratio*100:.0f}% 推文含卖货/引流词（>=25%，+3）"
         else:
             _human_break["卖货内容占比"] = f"{_sell_ratio*100:.0f}% 推文含卖货/引流词（<25%，+0）"
-        if _bio_sell >= 2:
+        if _bio_sell >= 3:
+            _human_score += 5
+            _human_break["简介卖货"] = f"简介含 {_bio_sell} 个露骨卖货词（>=3，明码标价营销号，+5）"
+        elif _bio_sell >= 1:
             _human_score += 3
-            _human_break["简介卖货"] = f"简介含 {_bio_sell} 个露骨卖货词（>=2，营销号形态，+3）"
-        elif _bio_sell == 1:
-            _human_break["简介卖货"] = f"简介含 1 个露骨卖货词（<2，+0）"
+            _human_break["简介卖货"] = f"简介含 {_bio_sell} 个露骨卖货词（>=1，营销号形态，+3）"
         else:
             _human_break["简介卖货"] = f"简介露骨卖货词 0 个（+0）"
+        if _bio_explicit_hits:
+            _human_score += 4
+            _human_break["简介性服务明示"] = f"简介含性服务明示词：{'、'.join(_bio_explicit_hits[:5])}（+4）"
+        if _bio_data_hit:
+            _human_score += 3
+            _human_break["简介数据模板"] = "简介含个人数据模板/卖货角色词（足模/写真模特等，+3）"
+        if following > 0 and followers >= 500 and following / followers < 0.05:
+            _human_score += int(_CAL.get("oneway_marketing_score", 4))
+            _human_break["单向关注营销号"] = f"关注/粉丝 {following}/{followers} < 5%（单向营销号形态，+4）"
+        if followers > 10000 and _bio_sell >= 2:
+            _human_score += int(_CAL.get("bigv_sell_score", 3))
+            _human_break["大V卖货"] = f"粉丝 {followers} >1万 且简介含 {_bio_sell} 个卖货词（大V变现号，+3）"
+        if len(tweets) < 30 and followers > 500:
+            _human_score += int(_CAL.get("low_content_high_follow", 3))
+            _human_break["低内容高粉"] = f"仅抓取到 {len(tweets)} 条推文但粉丝 {followers}（低内容高粉，+3）"
         if _sell_impl_cnt or _bio_sell_impl:
             _human_break["隐晦引流提示"] = f"检测到隐晦引流词（推文 {_sell_impl_cnt} 条/简介 {_bio_sell_impl} 个），不扣分仅提示"
         if _life_ratio < 0.08:
@@ -409,15 +512,18 @@ class RiskEngine:
             _human_break["真人感减免"] = f"生活化内容 {_life_ratio*100:.0f}%（>=25%，-2）"
         else:
             _human_break["真人感减免"] = f"生活化内容 {_life_ratio*100:.0f}%（<25%，无减免）"
-        _human_score = max(0, min(12, _human_score - _human_discount))
+        _human_score = max(0, min(_human_max, _human_score - _human_discount))
 
         # ---- 7 维度证据：Premium 状态 ----
         _prem_verified_score = int(_CAL.get("verified_score", -2))
-        _prem_score = _prem_verified_score if (profile.get("is_blue_verified") or profile.get("verified")) else (2 if followers > 10000 else 0)
-        _prem_issues = [f"蓝标认证 → 推断开通 Premium（{_prem_verified_score} 信任加分）"] if (profile.get("is_blue_verified") or profile.get("verified")) else (
-            [f"粉丝 {followers} >10K 但未见 Premium 标记（+2）"] if followers > 10000
-            else [f"粉丝 {followers} <10K，Premium 维度无加分/扣分"]
-        )
+        # v5.3：认证卖货号不享受蓝标信任加分（蓝标+明码标价 = 营销号伪装）
+        _seller_verified = bool(profile.get("is_blue_verified") or profile.get("verified")) and _bio_sell >= 2
+        _prem_score = (0 if _seller_verified else _prem_verified_score) if (profile.get("is_blue_verified") or profile.get("verified")) else (2 if followers > 10000 else 0)
+        _prem_issues = ([f"蓝标认证 + 简介含 {_bio_sell} 个卖货词 → 认证卖货号，不享受信任加分（+0）"] if _seller_verified else
+            [f"蓝标认证 → 推断开通 Premium（{_prem_verified_score} 信任加分）"] if (profile.get("is_blue_verified") or profile.get("verified")) else (
+                [f"粉丝 {followers} >10K 但未见 Premium 标记（+2）"] if followers > 10000
+                else [f"粉丝 {followers} <10K，Premium 维度无加分/扣分"]
+            ))
 
         # ---- 2 维度证据：平台标记率（校准 marking 尺度）----
         _platform_mark_rate = len(flagged) / n_all
@@ -425,22 +531,63 @@ class RiskEngine:
         _mark_score = _mark_raw
         _mark_issues = [f"{len(media_unmarked)} 条含成人关键词媒体未标记 Sensitive Media（每条 +3）"]
         # marking 折算收紧（v4.9）：平台标记率 <10% 且 NSFW 占比 <30% 才视为“平台认可的擦边尺度”
+        # v5.3：露骨卖货号（简介含性服务明示或 >=2 卖货词）不享受折算——明码标价号无“擦边”可言
         _nsfw_share = (len(flagged) + len(strong_hits) + len(soft_hits)) / n_all
-        if media_unmarked and _platform_mark_rate < 0.10 and _nsfw_share < 0.30:
+        # v5.3 修正：仅以简介明示判定“露骨卖货号”（推文命中的语境词不算，避免 chichi_maddy 类误伤）
+        _seller_bio_clear = bool(_bio_explicit_hits) or _bio_sell >= 2
+        if media_unmarked and _platform_mark_rate < 0.10 and _nsfw_share < 0.30 and not _seller_bio_clear:
             _mark_score = round(_mark_raw * 0.5)
             _mark_issues.append(f"平台整体标记率仅 {_platform_mark_rate*100:.1f}%（<10%）且 NSFW 占比 {_nsfw_share*100:.0f}%（<30%，平台认可的擦边尺度），按 50% 折算（{_mark_raw} -> {_mark_score}）")
+        elif media_unmarked and _platform_mark_rate < 0.10 and _nsfw_share < 0.30 and _seller_bio_clear:
+            _mark_issues.append(f"平台整体标记率仅 {_platform_mark_rate*100:.1f}%，但简介为露骨卖货号（性服务明示/卖货词 >=2），不享受擦边折算，漏标按正常规则扣分")
         elif media_unmarked:
             _mark_issues.append(f"平台整体标记率 {_platform_mark_rate*100:.1f}% 或 NSFW 占比 {_nsfw_share*100:.0f}%（>=30%，露骨内容不享受折算），漏标按正常规则扣分")
         else:
             _mark_issues = [f"{len(flagged)}/{len(tweets)} 条推文已被 X 标记敏感，无漏标"]
 
+        # ---- 6 维度证据：关注/粉丝比与增长（v5.3 新增成长异常信号）----
+        _follow_score = 4 if (following > 0 and followers > 0 and following / followers > 10) else 0
+        _follow_issues = []
+        if following > 0 and followers > 0 and following / followers > 10:
+            _follow_issues.append(f"关注/粉丝比 {following}/{followers} >10（+4）")
+        else:
+            _follow_issues.append(f"关注/粉丝比 {following}/{followers} 正常")
+        _statuses_cnt = _parse_int(profile.get("statuses", 0))
+        _posts_cnt = _statuses_cnt if _statuses_cnt > 0 else len(tweets)
+        if _posts_cnt > 0 and _posts_cnt < 200 and followers / _posts_cnt > 50:
+            _follow_score += int(_CAL.get("growth_follow_per_tweet", 3))
+            _follow_issues.append(f"粉丝/推文比 {followers}/{_posts_cnt} = {followers/_posts_cnt:.0f} >50（粉丝远超内容量，疑似刷粉/互关，+3）")
+        _joined = profile.get("joined") or ""
+        _age_days = None
+        for _fmt in ("%a %b %d %H:%M:%S %z %Y", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"):
+            try:
+                _jd = datetime.strptime(_joined.strip(), _fmt)
+                _age_days = (datetime.utcnow() - _jd.replace(tzinfo=None)).days
+                break
+            except (ValueError, AttributeError):
+                continue
+        if _age_days is not None and _age_days >= 0:
+            if _age_days < 30 and followers > 200:
+                _follow_score += int(_CAL.get("new_acc_very_fast", 4))
+                _follow_issues.append(f"注册仅 {_age_days} 天已 {followers} 粉（<30天>200粉，新号快速涨粉，+4）")
+            elif _age_days < 90 and followers > 500:
+                _follow_score += int(_CAL.get("new_acc_fast", 3))
+                _follow_issues.append(f"注册仅 {_age_days} 天已 {followers} 粉（<90天>500粉，新号快速涨粉，+3）")
+        if not _follow_issues:
+            _follow_issues.append("无增长异常证据")
+        _follow_score = min(8, _follow_score)
+
         dims = {
             # ---- 1. ACC 计划合规 (0-15) ----
             "acc_plan": {
                 "label": "ACC 计划合规",
-                "risk_score": 10 if nsfw_ratio_main > 0.2 else 0,
+                # v5.3：近全成人账号（>90%）风险更高，按浓度分级
+                "risk_score": 15 if nsfw_ratio_main > 0.9 else 12 if nsfw_ratio_main > 0.5 else 10 if nsfw_ratio_main > 0.2 else 0,
                 "max_risk": 15,
                 "issues": (
+                    [f"主时间线 {nsfw_main}/{n_main} 条为成人/敏感内容（{nsfw_ratio_main*100:.0f}%>90%，近全成人账号，+15）",
+                     "未检测到 ACC 计划成员证据，按“未加入”计分"]
+                    if nsfw_ratio_main > 0.9 else
                     [f"主时间线 {nsfw_main}/{n_main} 条为成人/敏感内容（{nsfw_ratio_main*100:.0f}%），"
                      "未检测到 ACC 计划成员证据，按“未加入”计分（+10；若已加入可下调）"]
                     if nsfw_ratio_main > 0.2
@@ -481,9 +628,9 @@ class RiskEngine:
             # ---- 6. 关注/粉丝比与增长 (0-8) ----
             "follow_ratio": {
                 "label": "关注/粉丝比与增长",
-                "risk_score": 4 if (following > 0 and followers > 0 and following / followers > 10) else 0,
+                "risk_score": _follow_score,
                 "max_risk": 8,
-                "issues": [f"关注/粉丝比 {following}/{followers} 正常", "粉丝机器人占比/关注列表封号率无法验证（计 0 分）"],
+                "issues": _follow_issues + ["粉丝机器人占比/关注列表封号率无法验证（计 0 分）"],
                 "following": following,
                 "followers": followers,
                 "ratio": round(following / followers, 4) if followers else None,
@@ -528,6 +675,9 @@ class RiskEngine:
             d8_breakdown["低互动"] = f"{low_likes}/{n_all} 条互动 <5 赞（{low_likes/n_all*100:.0f}% > 70%，但粉丝 {followers} <5000，小号正常现象不扣分）"
         else:
             d8_breakdown["低互动"] = f"{low_likes}/{n_all} 条互动 <5 赞（{low_likes/n_all*100:.0f}%，<=70%，+0）"
+        if len(tweets) < 30 and followers > 500:
+            d8 += int(_CAL.get("low_content_high_follow", 3))
+            d8_breakdown["低内容高粉"] = f"仅抓取到 {len(tweets)} 条推文但粉丝 {followers}（低内容高粉，+3）"
         dims["content_diversity"] = {
             "label": "内容多样性与活跃度",
             "risk_score": min(12, d8), "max_risk": 12,
@@ -573,7 +723,7 @@ class RiskEngine:
         }
         dims["survival"] = {
             "label": "账号存续风险",
-            "risk_score": _survival, "max_risk": 15,
+            "risk_score": _survival, "max_risk": int(_CAL.get("survival_max", 18)),
             "issues": _surv_issues,
             "ban_hits": _ban_hits[:8],
             "sw_hits": _sw_hits[:10],
@@ -583,7 +733,7 @@ class RiskEngine:
         }
         dims["human"] = {
             "label": "真人感/营销号形态",
-            "risk_score": _human_score, "max_risk": 12,
+            "risk_score": _human_score, "max_risk": int(_CAL.get("human_max", 14)),
             "issues": [f"{k}：{v}" for k, v in _human_break.items()],
             "life_ratio": round(_life_ratio, 3),
             "sell_ratio": round(_sell_ratio, 3),
