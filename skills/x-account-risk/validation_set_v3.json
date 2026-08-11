@@ -1019,5 +1019,16 @@
         "content_diversity": 5
       }
     }
+  ],
+  "penalty_events": [
+    {
+      "handle": "kaixintangtang",
+      "event": "frozen_then_unbanned",
+      "date": "2026-08-10",
+      "detail": "账号被 X 冻结，经申诉后解封（用户提供）",
+      "premortem_score": 39,
+      "postmortem_score": 39,
+      "notes": "漏打码34条+擦边35条+ACC未登记，风险结构未变"
+    }
   ]
 }
