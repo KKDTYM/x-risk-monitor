@@ -423,7 +423,8 @@
   "low_content_high_follow": 3,
   "growth_follow_per_tweet": 3,
   "new_acc_fast": 3,
-  "new_acc_very_fast": 4
+  "new_acc_very_fast": 4,
+  "growth_requires_low_engagement": true
  },
     "accounts": [
         {

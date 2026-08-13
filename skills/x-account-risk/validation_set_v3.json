@@ -1,6 +1,6 @@
 {
  "version": 3,
- "generated_at": "2026-08-11T21:30:00",
+ "generated_at": "2026-08-13T00:30:00",
  "total": 10523,
  "alive": 10516,
  "dead": 9,
@@ -1024,7 +1024,7 @@
     "human": 6,
     "content_diversity": 5
    },
-   "premortem_engine": "v5.3"
+   "premortem_engine": "v5.4"
   },
   {
    "handle": "ultimatesexy15",
@@ -1042,7 +1042,7 @@
     "content_diversity": 5
    },
    "notes": "秽土转生重生史+60条漏打码+75条Tier2+95%NSFW+性服务明示；惜夕/天津TS，ChapelJune评测对象",
-   "premortem_engine": "v5.3"
+   "premortem_engine": "v5.4"
   },
   {
    "handle": "mirahangzhou",
@@ -1051,8 +1051,8 @@
    "evidence": "fxTwitter 404 'User is suspended'; 用户 ynwa42239 推文确认被封（https://x.com/ynwa42239/status/2087114138892034129）",
    "premortem_score": 31,
    "premortem_date": null,
-   "notes": "样本库命中；2026-07-14注册，768粉/6推/1关注，简介为变现模板（168cm 49kg 脚码37 抖音同名）；快速涨粉+卖货人设+低内容量；v5.3 仅资料快照评分 31（低置信度，需补抓推文）",
-   "premortem_engine": "v5.3-profile-only"
+   "notes": "样本库命中；2026-07-14注册，768粉/6推/1关注，简介为变现模板（168cm 49kg 脚码37 抖音同名）；快速涨粉+卖货人设+低内容量；v5.3 仅资料快照评分 31（低置信度，需补抓推文）；v5.4 仅资料快照评分 31（低置信度，需补抓推文）",
+   "premortem_engine": "v5.4-profile-only"
   },
   {
    "handle": "shichengjiangya",
@@ -1062,17 +1062,17 @@
    "premortem_score": 55,
    "premortem_date": "2026-08-02",
    "notes": "监控/评估账号；无简介，内容擦边；出现在160关注列表",
-   "premortem_engine": "v5.3"
+   "premortem_engine": "v5.4"
   },
   {
    "handle": "jiajia2475",
    "detected": "2026-08-11",
    "status": "frozen",
    "evidence": "X 页面显示「账号已被冻结」；fxTwitter 404 'User is suspended'",
-   "premortem_score": 67,
+   "premortem_score": 65,
    "premortem_date": "2026-08-02",
    "notes": "女装/可约/口令 变现号，广州，2026-02-15注册，1.4万粉；出现在160关注列表",
-   "premortem_engine": "v5.3"
+   "premortem_engine": "v5.4"
   },
   {
    "handle": "gg64958",
@@ -1082,7 +1082,7 @@
    "premortem_score": 46,
    "premortem_date": "2026-08-02",
    "notes": "低分却被封的校准反例：江浙沪 男的，cos定制+线下课表+口令红包；bio变现信号未在推文文本中命中",
-   "premortem_engine": "v5.3"
+   "premortem_engine": "v5.4"
   },
   {
    "handle": "jingjing0324",
@@ -1091,8 +1091,8 @@
    "evidence": "X 页面显示「账号已被冻结」；fxTwitter 404 'User is suspended'",
    "premortem_score": 11,
    "premortem_date": null,
-   "notes": "足模圈顶流，女性非MTF，42k粉；关键反例：证明非MTF专项；v5.3 仅资料快照评分 11（无推文数据无法评估）",
-   "premortem_engine": "v5.3-profile-only"
+   "notes": "足模圈顶流，女性非MTF，42k粉；关键反例：证明非MTF专项；v5.3 仅资料快照评分 11（无推文数据无法评估）；v5.4 仅资料快照评分 11（无推文数据无法评估）",
+   "premortem_engine": "v5.4-profile-only"
   }
  ],
  "penalty_events": [
@@ -1101,9 +1101,10 @@
    "event": "frozen_then_unbanned",
    "date": "2026-08-10",
    "detail": "账号被 X 冻结，经申诉后解封（用户提供）",
-   "premortem_score": 39,
+   "premortem_score": 54,
    "postmortem_score": 39,
-   "notes": "漏打码34条+擦边35条+ACC未登记，风险结构未变"
+   "notes": "漏打码34条+擦边35条+ACC未登记，风险结构未变",
+   "premortem_engine": "v5.4"
   }
  ]
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""X 账号风险评分引擎 v5.3（11 维度，风险分逻辑：分数越高风险越大）。
+"""X 账号风险评分引擎 v5.4（11 维度，风险分逻辑：分数越高风险越大）。
 
 维度总分上限 = 147（15+15+12+10+10+8+8+12+25+18+14），有效维度（不含 api_reply/ip_network）= 125，归一化到 0-100。
 等级：>=60 高风险（红） / 30-59 中风险（黄） / <30 低风险（绿）。
@@ -31,6 +31,13 @@ gg64958 / mirahangzhou / jingjing0324，2026-08-10~11 封号潮）：
 - 增长维度：粉丝/推文比 >50 且推文 <200 +3；新号快速涨粉（<90天>500粉 +3，<30天>200粉 +4）
 - 露骨卖货号不享受 marking 擦边折算；认证卖货号不享受蓝标信任加分
 - 校准结果：5 个有推文数据的死亡样本全部 ≥46（该动手）；profile-only 样本输出低置信度提示
+
+v5.4 变更（用户反馈：日均涨粉本身不是坏事，防止误伤真·爆红新号）：
+- 增长类扣分（粉丝/推文比、新号快速涨粉、日均涨粉速度）增加“低互动”闸门：
+  仅当账号互动可验证且确实低互动（中位赞 <5 或低赞占比 >70%）时扣分；
+  互动健康（中位赞 >=5 且低赞占比 <=70%）不扣——真爆红新号互动不会低；
+  无推文数据（互动不可验证）保留扣分（如 mirahangzhou，避免漏掉卖货新号）。
+- “新号卖货人设组合”（注册 <90 天 + 卖货简介）不依赖互动，保持 +5。
 """
 import json
 import os
@@ -258,6 +265,20 @@ class RiskEngine:
                 continue
         if _age_days is not None and _age_days < 0:
             _age_days = None
+        # ---- v5.4：互动验证（增长类扣分的闸门）----
+        _like_vals = []
+        for _t in tweets:
+            try:
+                _like_vals.append(int(str(_t.get("likes") or 0).replace(",", "")))
+            except Exception:
+                _like_vals.append(0)
+        _eng_n = len(_like_vals)
+        _eng_verified = _eng_n >= 5
+        _med_likes = sorted(_like_vals)[_eng_n // 2] if _like_vals else 0
+        _low_like_ratio = (sum(1 for x in _like_vals if x < 5) / _eng_n) if _eng_n else 0
+        _low_engagement = _eng_verified and (_med_likes < 5 or _low_like_ratio > 0.7)
+        # 增长信号只在“互动不可验证”或“确实低互动”时生效
+        _allow_growth = ((not _eng_verified) or _low_engagement) if bool(_CAL.get("growth_requires_low_engagement", True)) else True
 
         # 主时间线推文（用于“账号发布内容”类指标）
         timeline_posts = [t for t in tweets
@@ -398,7 +419,7 @@ class RiskEngine:
             _survival += int(_CAL.get("bio_pack_sell_score", 3))
         if _new_acc_seller:
             _survival += int(_CAL.get("new_acc_seller_combo", 5))
-        if _fast_growth:
+        if _fast_growth and _allow_growth:
             _survival += int(_CAL.get("growth_velocity", 3))
         if _minor_hits:
             _survival += _minor_w
@@ -424,8 +445,10 @@ class RiskEngine:
             _surv_issues.append(f"简介含 {_bio_sell_count} 个露骨卖货词，明码标价简介（+3）")
         if _new_acc_seller:
             _surv_issues.append(f"新号（{_age_days} 天）+ 卖货人设（数据模板/卖货词/引流），本轮封号潮高危组合（+5）")
-        if _fast_growth:
-            _surv_issues.append(f"注册 {_age_days} 天日均涨粉 {followers/_age_days:.0f}（>10/天），增长速度异常（+3）")
+        if _fast_growth and _allow_growth:
+            _surv_issues.append(f"注册 {_age_days} 天日均涨粉 {followers/_age_days:.0f}（>10/天）+ 低互动确认，增长速度异常（+3）")
+        elif _fast_growth:
+            _surv_issues.append(f"注册 {_age_days} 天日均涨粉 {followers/_age_days:.0f}（>10/天），但互动健康（中位赞 {_med_likes}），不按刷粉扣分")
         if _impl_hits:
             _surv_issues.append(f"检测到隐晦引流词（未扣分，仅提示）：{'、'.join(_impl_hits[:6])}")
         if _dox_hits:
@@ -554,9 +577,11 @@ class RiskEngine:
             _follow_issues.append(f"关注/粉丝比 {following}/{followers} 正常")
         _statuses_cnt = _parse_int(profile.get("statuses", 0))
         _posts_cnt = _statuses_cnt if _statuses_cnt > 0 else len(tweets)
-        if _posts_cnt > 0 and _posts_cnt < 200 and followers / _posts_cnt > 50:
+        if _posts_cnt > 0 and _posts_cnt < 200 and followers / _posts_cnt > 50 and _allow_growth:
             _follow_score += int(_CAL.get("growth_follow_per_tweet", 3))
-            _follow_issues.append(f"粉丝/推文比 {followers}/{_posts_cnt} = {followers/_posts_cnt:.0f} >50（粉丝远超内容量，疑似刷粉/互关，+3）")
+            _follow_issues.append(f"粉丝/推文比 {followers}/{_posts_cnt} = {followers/_posts_cnt:.0f} >50 + 低互动确认（疑似刷粉/互关，+3）")
+        elif _posts_cnt > 0 and _posts_cnt < 200 and followers / _posts_cnt > 50:
+            _follow_issues.append(f"粉丝/推文比 {followers}/{_posts_cnt} = {followers/_posts_cnt:.0f} >50，但互动健康（中位赞 {_med_likes}），不按刷粉扣分")
         _joined = profile.get("joined") or ""
         _age_days = None
         for _fmt in ("%a %b %d %H:%M:%S %z %Y", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"):
@@ -567,12 +592,14 @@ class RiskEngine:
             except (ValueError, AttributeError):
                 continue
         if _age_days is not None and _age_days >= 0:
-            if _age_days < 30 and followers > 200:
+            if _age_days < 30 and followers > 200 and _allow_growth:
                 _follow_score += int(_CAL.get("new_acc_very_fast", 4))
-                _follow_issues.append(f"注册仅 {_age_days} 天已 {followers} 粉（<30天>200粉，新号快速涨粉，+4）")
-            elif _age_days < 90 and followers > 500:
+                _follow_issues.append(f"注册仅 {_age_days} 天已 {followers} 粉（<30天>200粉）+ 低互动确认，新号快速涨粉（+4）")
+            elif _age_days < 90 and followers > 500 and _allow_growth:
                 _follow_score += int(_CAL.get("new_acc_fast", 3))
-                _follow_issues.append(f"注册仅 {_age_days} 天已 {followers} 粉（<90天>500粉，新号快速涨粉，+3）")
+                _follow_issues.append(f"注册仅 {_age_days} 天已 {followers} 粉（<90天>500粉）+ 低互动确认，新号快速涨粉（+3）")
+            elif _age_days is not None and _age_days < 90 and followers > 500:
+                _follow_issues.append(f"注册仅 {_age_days} 天已 {followers} 粉，但互动健康（中位赞 {_med_likes}），不按刷粉扣分")
         if not _follow_issues:
             _follow_issues.append("无增长异常证据")
         _follow_score = min(8, _follow_score)
