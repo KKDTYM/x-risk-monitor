@@ -352,7 +352,9 @@
    "🉑线下",
    "可以约会",
    "可1可0",
-   "有🚪"
+   "有🚪",
+   "prostitute",
+   "escort"
   ],
   "survival_sw_monetize": [
    "报价",
@@ -457,10 +459,13 @@
         "raw_data_dir": "data/account_data",
         "report_dir": "data/reports"
     },
-    "risk_thresholds": {
-        "high_score": 60,
-        "medium_score": 30
-    },
+ "risk_thresholds": {
+  "high_score": 60,
+  "medium_score": 30,
+  "survival_high": 60,
+  "survival_action": 46,
+  "survival_remedy": 34
+ },
     "scraper": {
         "tweets_count": 15,
         "timeout_ms": 30000,

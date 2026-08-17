@@ -115,7 +115,7 @@ SURVIVAL_BAN_KEYWORDS = _KW.get("survival_ban", [
 # v5.2：拆分为“性服务明示”与“普通变现”——@Conny_vv 冻结案例显示性服务明示是强风险信号
 SURVIVAL_SW_EXPLICIT = _KW.get("survival_sw_explicit", [
     "接线下", "可约", "全国可飞", "全国可✈", "莞式", "包夜", "线上一对一", "卖淫", "嫖", "援交",
-    "可线下", "🉑线下", "可以约会", "可1可0", "有🚪",
+    "可线下", "🉑线下", "可以约会", "可1可0", "有🚪", "prostitute", "escort",
 ])
 SURVIVAL_SW_MONETIZE = _KW.get("survival_sw_monetize", [
     "接线下", "可约", "全国可飞", "全国可✈", "莞式", "报价",
@@ -207,6 +207,8 @@ class RiskEngine:
         effective_max = sum(d["max_risk"] for k, d in dims.items() if k not in excluded_dims)
         score = max(0, min(100, round(total / effective_max * 100))) if effective_max > 0 else 0
         level = "high" if score >= 60 else "medium" if score >= 30 else "low"
+        # v5.5：存活风险分（只看会不会被封，弱化合规项）
+        _surv5 = self._survival_focus_score(raw_data, dims)
 
         # ---- v4.7 置信度：无数据维度 + 样本覆盖率 ----
         statuses = _parse_int(profile.get("statuses", 0))
@@ -234,6 +236,11 @@ class RiskEngine:
         return {
             "score": score,
             "level": level,
+            "survival_score": _surv5["survival_score"],
+            "survival_level": _surv5["survival_level"],
+            "survival_raw": _surv5["survival_raw"],
+            "survival_max": _surv5["survival_max"],
+            "survival_breakdown": _surv5["survival_breakdown"],
             "dim_coverage": {
                 "total_dimensions": len(dims),
                 "effective_dimensions": len(dims) - len(excluded_dims),
@@ -355,16 +362,19 @@ class RiskEngine:
         _minor_hits = []
         _impersonator_count = len(extra_data.get("impersonators") or [])
         for txt in _all_texts:
+            _txt_low = (txt or "").lower()
             for kw in SURVIVAL_BAN_KEYWORDS:
-                if kw in txt and ("无" + kw) not in txt and ("不" + kw) not in txt and kw not in _ban_hits:
+                k = kw.lower()
+                if k in _txt_low and ("无" + k) not in _txt_low and ("不" + k) not in _txt_low and kw not in _ban_hits:
                     _ban_hits.append(kw)
             for kw in SURVIVAL_SW_KEYWORDS:
-                if ("无" + kw) in txt or ("不" + kw) in txt or kw in _sw_hits:
+                k = kw.lower()
+                if ("无" + k) in _txt_low or ("不" + k) in _txt_low or kw in _sw_hits:
                     continue
                 if kw == "门槛" and not re.search(r"门槛\s*\d", txt):
                     # “门槛”需与数字共现（如 门槛300/🚪门槛300），单独提问不算变现
                     continue
-                if kw in txt:
+                if k in _txt_low:
                     _sw_hits.append(kw)
                     if kw in SURVIVAL_SW_EXPLICIT:
                         _sw_explicit_hits.append(kw)
@@ -767,6 +777,128 @@ class RiskEngine:
             "repost_ratio": round(_repost_ratio, 3),
         }
         return dims
+
+    def _survival_focus_score(self, raw_data, dims):
+        """v5.5：存活风险分——只关注“会不会被封”，弱化成人内容/漏打码等合规项。
+        依据：7 个真实死亡样本 + 8/10-8/11 封号潮（不真实行为/变现/新号组合为主因）。"""
+        profile = raw_data.get("profile", {}) or {}
+        tweets = raw_data.get("recent_tweets", []) or []
+        followers = _parse_int(profile.get("followers_count", 0))
+        following = _parse_int(profile.get("following_count", 0))
+        _bio_text = profile.get("description") or ""
+
+        # 1) 扫描简介+原创推文（同主引擎逻辑）
+        _all_texts = [_bio_text] + [(t.get("text") or t.get("raw") or "") for t in tweets if not t.get("is_retweet")]
+        _ban_hits, _sw_explicit_hits, _sw_monetize_hits = [], [], []
+        for txt in _all_texts:
+            txt_low = (txt or "").lower()
+            for kw in SURVIVAL_BAN_KEYWORDS:
+                k = kw.lower()
+                if k in txt_low and ("无" + k) not in txt_low and ("不" + k) not in txt_low and kw not in _ban_hits:
+                    _ban_hits.append(kw)
+            for kw in SURVIVAL_SW_KEYWORDS:
+                k = kw.lower()
+                if ("无" + k) in txt_low or ("不" + k) in txt_low or kw in (_sw_explicit_hits + _sw_monetize_hits):
+                    continue
+                if kw == "门槛" and not re.search(r"门槛\s*\d", txt):
+                    continue
+                if k in txt_low:
+                    if kw in SURVIVAL_SW_EXPLICIT:
+                        _sw_explicit_hits.append(kw)
+                    else:
+                        _sw_monetize_hits.append(kw)
+        if re.search(r"🚪\s*\d", _bio_text) and "🚪+数字" not in _sw_explicit_hits:
+            _sw_explicit_hits.append("🚪+数字")
+        _bio_no_sell = any(k in _bio_text for k in BIO_NO_SELL_KEYWORDS)
+        _bio_data_hit = (any(p.search(_bio_text) for p in BIO_DATA_PATTERNS) or any(
+            k in _bio_text for k in BIO_SELL_ROLE_KEYWORDS)) and not _bio_no_sell
+        _bio_drain_hits = [k for k in BIO_DRAIN_KEYWORDS if k in _bio_text]
+        _bio_disclaimer_hits = [k for k in BIO_DISCLAIMER_KEYWORDS if k in _bio_text]
+        _bio_sell_count = sum(1 for kw in SELL_KEYWORDS if kw in _bio_text.lower())
+
+        # 2) 年龄与互动闸门（同 v5.4）
+        _age_days = None
+        _joined = profile.get("joined") or ""
+        for _fmt in ("%a %b %d %H:%M:%S %z %Y", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"):
+            try:
+                _jd = datetime.strptime(_joined.strip(), _fmt)
+                _age_days = (datetime.utcnow() - _jd.replace(tzinfo=None)).days
+                break
+            except (ValueError, AttributeError):
+                continue
+        if _age_days is not None and _age_days < 0:
+            _age_days = None
+        _like_vals = []
+        for _t in tweets:
+            try:
+                _like_vals.append(int(str(_t.get("likes") or 0).replace(",", "")))
+            except Exception:
+                _like_vals.append(0)
+        _eng_n = len(_like_vals)
+        _eng_verified = _eng_n >= 5
+        _med_likes = sorted(_like_vals)[_eng_n // 2] if _like_vals else 0
+        _low_like_ratio = (sum(1 for x in _like_vals if x < 5) / _eng_n) if _eng_n else 0
+        _low_engagement = _eng_verified and (_med_likes < 5 or _low_like_ratio > 0.7)
+        _allow_growth = ((not _eng_verified) or _low_engagement) if bool(_CAL.get("growth_requires_low_engagement", True)) else True
+
+        # 3) 分值（上限合计 127，归一化到 100）
+        brk = {}
+        s = 0
+        b = min(15, len(_ban_hits) * 5)
+        if b: s += b; brk["封禁/重生史"] = f"{b}（{len(_ban_hits)} 个信号）"
+        e = min(30, len(_sw_explicit_hits) * 10)
+        if e: s += e; brk["性服务明示"] = f"{e}（{len(_sw_explicit_hits)} 个信号）"
+        m = min(24, len(_sw_monetize_hits) * 6)
+        if m: s += m; brk["商业变现"] = f"{m}（{len(_sw_monetize_hits)} 个信号）"
+        f0 = 0
+        if _bio_data_hit: f0 += 4
+        if _bio_drain_hits: f0 += 2
+        if _bio_disclaimer_hits: f0 += 2
+        if _bio_sell_count >= 3: f0 += 3
+        f0 = min(8, f0)
+        if f0: s += f0; brk["简介卖货形态"] = str(f0)
+        if _age_days is not None and _age_days < 90 and (_bio_data_hit or _bio_sell_count >= 1 or _bio_drain_hits):
+            s += 10; brk["新号卖货组合"] = "10"
+        g = 0
+        _statuses_cnt = _parse_int(profile.get("statuses", 0))
+        _posts_cnt = _statuses_cnt if _statuses_cnt > 0 else len(tweets)
+        if _posts_cnt > 0 and _posts_cnt < 200 and followers / _posts_cnt > 50 and _allow_growth:
+            g += 4
+        if _age_days is not None and _age_days >= 0:
+            if _age_days < 30 and followers > 200 and _allow_growth:
+                g += 4
+            elif _age_days < 90 and followers > 500 and _allow_growth:
+                g += 4
+            if _age_days < 90 and followers > 200 and followers / max(1, _age_days) > 10 and _allow_growth:
+                g += 4
+        g = min(12, g)
+        if g: s += g; brk["增长异常"] = f"{g}（低互动确认）" if _allow_growth else f"{g}"
+        if following > 0 and followers >= 500 and following / followers < 0.05:
+            s += 5; brk["单向营销号"] = "5"
+        if followers >= 5000 and _low_like_ratio > 0.7:
+            s += 5; brk["低互动大号"] = "5"
+        _imp = dims.get("survival", {}).get("impersonator_count", 0)
+        if _imp >= 6: s += 4; brk["仿冒号"] = "4"
+        elif _imp >= 3: s += 2; brk["仿冒号"] = "2"
+        mk = min(6, int(dims.get("marking", {}).get("unflagged_count", 0)))
+        if mk: s += mk; brk["漏打码"] = f"{mk}（弱信号）"
+        t2 = int(dims.get("prohibited", {}).get("tier2_count", 0))
+        if t2 >= 50: t2s = 8
+        elif t2 >= 10: t2s = 6
+        elif t2 >= 3: t2s = 4
+        elif t2 >= 1: t2s = 2
+        else: t2s = 0
+        if t2s: s += t2s; brk["擦边浓度"] = str(t2s)
+
+        score = max(0, min(100, s))
+        level = "high" if score >= 60 else "medium" if score >= 46 else "low"
+        return {
+            "survival_score": score,
+            "survival_level": level,
+            "survival_raw": s,
+            "survival_max": 100,
+            "survival_breakdown": brk,
+        }
 
     @staticmethod
     def _two_hour_burst(tweets):

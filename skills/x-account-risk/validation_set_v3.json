@@ -1,6 +1,6 @@
 {
  "version": 3,
- "generated_at": "2026-08-17T12:00:00",
+ "generated_at": "2026-08-17T13:00:00",
  "total": 10523,
  "alive": 10516,
  "dead": 9,
@@ -1120,17 +1120,19 @@
  "monitor_current": [
   {
    "handle": "kaixintangtang",
-   "score": 70,
-   "level": "high",
+   "survival_score": 54,
+   "survival_level": "medium",
+   "compliance_score": 70,
    "date": "2026-08-17",
-   "note": "92%NSFW/23漏打码/49天7960粉/复活版/低互动确认"
+   "note": "存活主口径 54（该动手）：复活版+新号卖货组合+增长异常+单向营销；合规 70"
   },
   {
    "handle": "dangao0709",
-   "score": 58,
-   "level": "medium",
+   "survival_score": 53,
+   "survival_level": "medium",
+   "compliance_score": 58,
    "date": "2026-08-17",
-   "note": "好友位.六十八标价/54漏打码/62Tier2/88%NSFW"
+   "note": "存活主口径 53（该动手）：变现24+重生+低互动大号+擦边；合规 58"
   }
  ]
 }
