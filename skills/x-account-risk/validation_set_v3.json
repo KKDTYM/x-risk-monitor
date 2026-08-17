@@ -1,6 +1,6 @@
 {
  "version": 3,
- "generated_at": "2026-08-17T13:00:00",
+ "generated_at": "2026-08-17T14:30:00",
  "total": 10523,
  "alive": 10516,
  "dead": 9,
@@ -1120,11 +1120,11 @@
  "monitor_current": [
   {
    "handle": "kaixintangtang",
-   "survival_score": 54,
-   "survival_level": "medium",
+   "survival_score": 66,
+   "survival_level": "high",
    "compliance_score": 70,
    "date": "2026-08-17",
-   "note": "存活主口径 54（该动手）：复活版+新号卖货组合+增长异常+单向营销；合规 70"
+   "note": "存活主口径 66（高危）：新增🚪68付费门槛+10、t.me引流+2、复活版+新号卖货+增长异常；合规 70"
   },
   {
    "handle": "dangao0709",

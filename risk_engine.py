@@ -165,7 +165,7 @@ BIO_DATA_PATTERNS = [
 ]
 BIO_SELL_ROLE_KEYWORDS = _KW.get("bio_sell_role", ["足模", "写真模特", "模特", "福利姬", "私房照"])
 # 引流到其他平台/同名可搜（卖货号标配）
-BIO_DRAIN_KEYWORDS = _KW.get("bio_drain", ["dy同名", "抖音同名", "全网同名", "同名可搜"])
+BIO_DRAIN_KEYWORDS = _KW.get("bio_drain", ["dy同名", "抖音同名", "全网同名", "同名可搜", "t.me"])
 # 卖货免责声明（卖货号标配话术）
 BIO_DISCLAIMER_KEYWORDS = _KW.get("bio_disclaimer", ["感谢X平台", "遵守X平台规则", "遵守平台规则", "严格自律"])
 # 简介明确否认卖货（真实博主自证，豁免数据模板加分）

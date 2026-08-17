@@ -7,6 +7,9 @@ Usage:
 """
 import json, re, sys, os
 from datetime import datetime
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 
 try:
     from risk_engine import RiskEngine
@@ -76,6 +79,20 @@ for t in tweets_raw:
     })
 
 bio = profile_raw.get('bio', '')
+_fx_loc = None
+_FX_DIR = os.path.join(os.path.dirname(WS), 'fx_files')
+for _fxp in [os.path.join(_FX_DIR, f'{LOWER}.json'), os.path.join(os.path.dirname(WS), f'fx_{LOWER}.json')]:
+    if os.path.exists(_fxp):
+        try:
+            _fxu = json.load(open(_fxp, encoding='utf-8')).get('user', {})
+            _loc = _fxu.get('location') or ''
+            _site = (_fxu.get('website') or {}).get('url') or ''
+            if _loc or _site:
+                bio = (bio + '\n' + _loc + '\n' + _site).strip()
+                _fx_loc = (_loc, _site)
+        except Exception:
+            pass
+        break
 followers = 0
 following = 0
 # 中文 X 用「关注者」而非「粉丝」，正则必须覆盖
