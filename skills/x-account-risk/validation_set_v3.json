@@ -1,6 +1,6 @@
 {
  "version": 3,
- "generated_at": "2026-08-13T00:30:00",
+ "generated_at": "2026-08-17T12:00:00",
  "total": 10523,
  "alive": 10516,
  "dead": 9,
@@ -1006,6 +1006,16 @@
     "重生"
    ],
    "bio": "原创博主，唯一账号，重生之老马再爱我一次，主页视频完整版都在电报群，自助入群链接https://t.me/zzkthur_shop_bot，感谢您支持原创博主，有问题可私信~"
+  },
+  {
+   "handle": "Conny_feitu",
+   "name": "Ts_Conny777",
+   "hits": [
+    "??",
+    "Conny_vv??"
+   ],
+   "bio": "??Ts Shanghai Trans TKS for following. 174/65kg ???? 36D Daily share ????????? ??66???????????? tg:http://t.me/Ts_Conny",
+   "note": "?????@Conny_vv?2026-08-10 ???????????????tg ??????41?/5??v5.4 ????? 26?????18/18????14/14 ??????????????? Cloudflare ????"
   }
  ],
  "dead_confirmations": [
@@ -1101,10 +1111,26 @@
    "event": "frozen_then_unbanned",
    "date": "2026-08-10",
    "detail": "账号被 X 冻结，经申诉后解封（用户提供）",
-   "premortem_score": 54,
+   "premortem_score": 70,
    "postmortem_score": 39,
-   "notes": "漏打码34条+擦边35条+ACC未登记，风险结构未变",
+   "notes": "8/17 复评 70：92%NSFW、23条漏打码、49天7960粉、复活版、互动中位1（低互动确认）",
    "premortem_engine": "v5.4"
+  }
+ ],
+ "monitor_current": [
+  {
+   "handle": "kaixintangtang",
+   "score": 70,
+   "level": "high",
+   "date": "2026-08-17",
+   "note": "92%NSFW/23漏打码/49天7960粉/复活版/低互动确认"
+  },
+  {
+   "handle": "dangao0709",
+   "score": 58,
+   "level": "medium",
+   "date": "2026-08-17",
+   "note": "好友位.六十八标价/54漏打码/62Tier2/88%NSFW"
   }
  ]
 }
